@@ -4,7 +4,7 @@ import streamlit as st
 from core import config, db, logica, timp, trust
 from core.logica import Eroare
 from services import autentificare as autentificare_srv
-from services import geo, nokia, stocare
+from services import geo, nokia, solana, stocare
 from ui import comp as c
 
 # ---------------------------------------------------------------------------
@@ -24,9 +24,7 @@ def _logheaza(uid):
 
 def autentificare():
     c.h(f'<div class="sk-col" style="align-items:center;text-align:center;padding:18px 0 4px">'
-        f'<div style="width:64px;height:64px;border-radius:20px;background:var(--sk-primary);display:grid;'
-        f'place-items:center;color:#fff">{c.ico("leaf", 32)}</div>'
-        f'<div class="sk-hero" style="margin-top:8px">SKILLIO</div>'
+        f'{c.logo(72)}<div style="margin-top:6px">{c.wordmark(34)}</div>'
         f'<div class="sk-b" style="color:var(--sk-muted)">{config.SLOGAN}<br>Meșteri de încredere din '
         f'{config.ORAS}, verificați prin rețeaua mobilă.</div></div>')
 
@@ -421,12 +419,22 @@ def cont(u):
             tarif = col2.number_input("Tarif orientativ (lei/oră)", 0, 1000, int(u["tarif_ora"] or 0), step=5,
                                       key="ed_tarif")
             raza = st.slider("Zona de activitate (km)", 1, 25, int(u["raza_km"] or 8), key="ed_raza")
+            wallet = u.get("sol_wallet") or ""
+            if solana.activ():
+                wallet = st.text_input("Adresa ta Solana (opțional, de ex. din Phantom)", wallet, key="ed_wallet",
+                                       help="Aici primești banii on-chain. Gol: îi primești în portofelul creat de "
+                                            "SKILLIO pentru tine.")
+                adr = solana.portofel_mester(u["id"], wallet)
+                c.h(f'<div class="sk-cap">Plățile tale ajung la <a href="{solana.link_adresa(adr)}" target="_blank">'
+                    f'{adr[:6]}…{adr[-4:]} ↗</a> (Solana devnet)</div>')
             if st.button("Salvează profilul profesional", type="primary", key="ed_save_pro", width="stretch"):
                 if not meserii:
                     st.error("Alege cel puțin o meserie.")
+                elif wallet.strip() and not (32 <= len(wallet.strip()) <= 44):
+                    st.error("Adresa Solana nu pare corectă.")
                 else:
                     logica.actualizeaza_profil(u["id"], meserii=",".join(meserii), despre=despre, experienta_ani=ani,
-                                               tarif_ora=tarif, raza_km=raza)
+                                               tarif_ora=tarif, raza_km=raza, sol_wallet=wallet.strip() or None)
                     c.toast("Profil profesional salvat.")
                     st.rerun()
         with st.expander("Poze cu lucrări anterioare"):
@@ -466,6 +474,11 @@ def cont(u):
             c.go("ghid")
         if st.button("Notificări", key="cont_notif", width="stretch", icon=":material/notifications:"):
             c.go("notificari")
+    with st.container(horizontal=True):
+        if st.button("Spune-ne părerea", key="cont_fb", width="stretch", icon=":material/rate_review:"):
+            c.go("feedback")
+        if st.button("Ce e nou", key="cont_nou", width="stretch", icon=":material/new_releases:"):
+            c.go("noutati")
     if st.button("Ieși din cont", key="danger_logout"):
         logica.sterge_sesiune(st.query_params.get("s"))
         st.query_params.clear()

@@ -3,8 +3,10 @@ import json
 
 import streamlit as st
 
+from views import comunitate
+
 from core import config, db, logica, timp
-from services import ai, autentificare, mesaje_externe, nokia, stocare
+from services import ai, autentificare, mesaje_externe, nokia, solana, stocare, voce
 from ui import comp as c
 
 
@@ -58,6 +60,8 @@ def panou(u):
                     st.rerun()
 
     _integrari()
+    with st.expander("Living Labs: ce spun oamenii"):
+        comunitate.rezultate()
 
     if not (config.MOD_PREZENTARE or config.DEMO_LOGIN):
         _toate_lucrarile()
@@ -114,6 +118,8 @@ def _integrari():
              ("Email", mesaje_externe.email_activ(), "SMTP", "oprit"),
              ("SMS", mesaje_externe.sms_activ(), "Twilio", "oprit"),
              ("Gemini", ai.activ(), "conectat", "reguli offline"),
+             ("Solana", solana.activ(), config.SOLANA_CLUSTER, "plată simulată"),
+             ("Voce", voce.activ(), "ElevenLabs", "vocea browserului"),
              ("Nokia", nokia.activ(), "conectat", "simulat")]
     with st.expander("Integrări și producție"):
         c.h('<div class="sk-badges">' + "".join(
@@ -129,6 +135,17 @@ def _integrari():
                 (st.success if ok else st.error)("Trimis." if ok else "Nu s-a putut trimite. Vezi jurnalul.")
             for j in mesaje_externe.ULTIMELE[:8]:
                 st.caption(f'{"✅" if j["ok"] else "❌"} {j["canal"]} → {j["catre"]} {j["detaliu"]}')
+        if solana.activ():
+            adr = solana.adresa_platforma()
+            c.h(f'<div class="sk-cap">Portofel platformă: <a href="{solana.link_adresa(adr)}" target="_blank">'
+                f'{adr} ↗</a></div>')
+            if st.button("Verifică soldul Solana", key="adm_sol"):
+                try:
+                    st.info(f"Platformă: {solana.sold(adr):.4f} SOL · seif: {solana.sold(str(solana.seif().pubkey())):.4f} SOL")
+                except Exception as e:
+                    st.error(f"Rețeaua Solana nu răspunde: {e}")
+            for j in solana.ULTIMELE[:6]:
+                st.caption(f'{"✅" if j["ok"] else "❌"} {j["la"]} {j["tip"]}: {j["detaliu"][:60]}')
         if st.button("Pregătește un backup (JSON)", key="adm_backup"):
             date = {t: db.q(f"SELECT * FROM {t}") for t in db.TABELE}
             st.session_state["_backup"] = json.dumps(date, ensure_ascii=False, default=str)

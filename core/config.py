@@ -72,7 +72,16 @@ SMTP_FROM = _env("SMTP_FROM") or SMTP_USER
 TWILIO_SID = _env("TWILIO_SID")
 TWILIO_TOKEN = _env("TWILIO_TOKEN")
 TWILIO_FROM = _env("TWILIO_FROM")              # numărul Twilio, ex. +1555...
-URL_APP = _env("URL_APP", "http://localhost:8501")   # adresa publică, pusă în linkurile din email/SMS
+URL_APP = _env("URL_APP", "http://localhost:8501")
+# 5. Solana (devnet): plata blocată on-chain. Gol = plată simulată.
+SOLANA_SECRET_KEY = _env("SOLANA_SECRET_KEY")  # cheia privată a portofelului platformei (base58 sau [..] JSON)
+SOLANA_RPC = _env("SOLANA_RPC", "https://api.devnet.solana.com")
+SOLANA_CLUSTER = _env("SOLANA_CLUSTER", "devnet")
+SOL_PER_LEU = float(_env("SOL_PER_LEU", "0.0001") or 0.0001)
+# 6. ElevenLabs: citește cu voce diagnosticul și ofertele. Gol = vocea browserului.
+ELEVENLABS_API_KEY = _env("ELEVENLABS_API_KEY")
+ELEVENLABS_VOICE_ID = _env("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+ELEVENLABS_MODEL = _env("ELEVENLABS_MODEL", "eleven_multilingual_v2")   # adresa publică, pusă în linkurile din email/SMS
 
 # --- meserii -----------------------------------------------------------------
 # pret = interval orientativ (lei), folosit când Gemini nu e disponibil

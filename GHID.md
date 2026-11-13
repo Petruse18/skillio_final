@@ -101,9 +101,11 @@ skillio/
 │   ├── geo.py           ← distanțe în km și coordonatele unei adrese
 │   ├── autentificare.py ← login securizat prin Auth0
 │   ├── stocare.py       ← unde stau pozele: cloud (Vultr / S3) sau local
-│   └── mesaje_externe.py ← notificări pe email și SMS
+│   ├── mesaje_externe.py ← notificări pe email și SMS
+│   ├── solana.py        ← plata blocată pe blockchain (Solana devnet). Fără cheie: simulat.
+│   └── voce.py          ← ElevenLabs: butonul „Ascultă”. Fără cheie: vocea browserului.
 │
-├── scripts/             ← unelte: migrare în PostgreSQL, backup, urcarea pozelor în cloud
+├── scripts/             ← unelte: migrare în PostgreSQL, backup, poze în cloud, portofelul Solana
 │
 ├── ui/                  ← piese vizuale refolosite
 │   ├── comp.py          ← „cărămizi”: avatar, stele, insigne, carduri, navigare (go, inapoi)
@@ -118,6 +120,7 @@ skillio/
     ├── lucrare.py       ← ecranul unei lucrări, cu toți pașii (ofertă → plată → sosire → confirmare → recenzie)
     ├── comun.py         ← ce au amândoi: intrare, ghid, chat, notificări, profil meșter, cont
     ├── admin.py         ← panoul intern: dispute, rapoarte, statistici, controale demo
+    ├── comunitate.py    ← Living Labs: chestionarul „Spune-ne părerea” și pagina „Ce e nou”
     └── prezentare.py    ← modul cu două telefoane (?mod=prezentare)
 ```
 
@@ -132,6 +135,8 @@ skillio/
 | ce se întâmplă când apeși un buton | butonul e în `views/`, acțiunea e o funcție din `core/logica.py` |
 | cum se calculează scorul | `core/trust.py` |
 | ce îi cerem lui Gemini | `services/ai.py` (variabila `PROMPT`) |
+| o versiune nouă în „Ce e nou” | `views/comunitate.py` (lista `NOUTATI`) |
+| cât SOL înseamnă un leu | `.env` → `SOL_PER_LEU` |
 
 ---
 

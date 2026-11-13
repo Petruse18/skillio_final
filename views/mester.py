@@ -20,6 +20,16 @@ def acasa(u):
         st.caption("Clienții te văd în căutări și primești solicitări." if disp else
                    "Nu primești solicitări noi. Lucrările programate rămân.")
 
+    urm = sorted([l for l in logica.lucrari_mester(u["id"]) if l["status"] in ("de_plata", "programata", "sosit")
+                  and l["programat_la"]], key=lambda l: l["programat_la"])
+    if urm:
+        l = urm[0]
+        cand = timp.din_iso(l["programat_la"])
+        c.h(c.card_hero(f'Următoarea: {timp.zi_frumos(cand.date())} · {timp.ora(cand)}',
+                        f'{l["titlu"]} · {l["cartier"]}', logica.bani_lucrare(l["id"])["blocat"]))
+        if st.button("Deschide lucrarea", key="link_hero_m", type="tertiary"):
+            c.go("lucrare", l["id"])
+
     c.h('<div class="sk-stats">'
         f'<div class="sk-stat"><span class="v">{c.lei(stat["incasat_sapt"])}</span><span class="l">Încasat săptămâna asta'
         f'</span></div><div class="sk-stat"><span class="v" style="color:var(--sk-escrow)">{c.lei(stat["blocat"])}</span>'

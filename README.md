@@ -55,6 +55,8 @@ Copiază `.env.example` ca `.env` și completează cheile. Fișierul `.env` nu s
 
 - `GEMINI_API_KEY`: din Google AI Studio. Fără cheie, diagnosticul merge pe reguli simple (cuvinte cheie).
 - `NOKIA_API_KEY` și `NOKIA_RAPIDAPI_HOST`: din consola Nokia Network as Code.
+- `SOLANA_SECRET_KEY`: portofelul platformei pe Solana devnet (`python -m scripts.solana_portofel`). Fără ea, plata e simulată.
+- `ELEVENLABS_API_KEY`: vocea pentru butonul „Ascultă”. Fără ea, citește vocea browserului.
 - `NOKIA_NUMAR_TEST`: în sandbox merg doar numerele de test (ex. `+99999991000`). Dacă e completat, toate
   apelurile către rețea folosesc acest număr.
 
@@ -70,6 +72,7 @@ clar de unde vine fiecare verificare. După ce schimbi `.env`, repornește `stre
 5. Ana confirmă ora și plătește. Banii apar „blocați” în SKILLIO.
 6. Ionel apasă **Am ajuns**. Rețeaua Nokia confirmă că e la adresă (cu „Ionel e departe de adresă” vezi cazul de eșec).
 7. Ionel marchează lucrarea gata, Ana bifează că totul e în regulă și banii ajung la Ionel, minus 10% comision.
+   Cu Solana pornit, cardul **Plată verificabilă pe blockchain** arată tranzacțiile pe Solana Explorer.
 8. Ana lasă recenzia pe 5 criterii. Cu butoanele **+1 zi / +6 zile / +23 zile** apar întrebările de durabilitate.
 
 Ce faci pe un telefon apare pe celălalt în 1-2 secunde. **Resetează demo** readuce datele la starea inițială.
@@ -102,10 +105,14 @@ services/geo.py     distanțe și coordonate
 services/autentificare.py   login Auth0
 services/stocare.py         poze în cloud (S3 / Vultr) sau local
 services/mesaje_externe.py  notificări pe email și SMS
+services/solana.py          plata blocată pe Solana devnet (blocare, 90/10, returnare, pașaport)
+services/voce.py            ElevenLabs: butonul „Ascultă”
 scripts/            migrare în PostgreSQL, backup, urcarea pozelor în cloud
 Dockerfile, docker-compose.yml, Caddyfile   serverul, cu HTTPS automat
 ui/                 componente, hărți, stiluri
-views/              ecranele: client, meșter, lucrare, comun (intrare, ghid, chat, profil), admin, prezentare
+views/              ecranele: client, meșter, lucrare, comun (intrare, ghid, chat, profil), admin, prezentare,
+                    comunitate (chestionar Living Labs și „Ce e nou”)
+pitch/              deck, scriptul demo, textul de înscriere, articolul DEV, chestionarul
 ```
 
 ## Trust Score

@@ -136,6 +136,45 @@ def avatar(u, mare=False):
     return f'<div class="sk-av{" lg" if mare else ""}">{esc(initiale(u.get("nume")))}{tick}</div>'
 
 
+def logo(marime=64):
+    """Logo-ul SKILLIO (din designul final): S alb pe pătrat verde, cu frunză."""
+    return (f'<svg width="{marime}" height="{marime}" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" '
+            f'height="48" rx="14" fill="var(--sk-primary)"></rect><path d="M31.5 17.2c-1.4-2.4-4.2-3.7-7.6-3.7-4.6 '
+            f'0-7.8 2.4-7.8 5.9 0 7.4 15.8 4.3 15.8 11.2 0 3.6-3.3 5.9-8.1 5.9-3.8 0-6.8-1.5-8.3-4.2" fill="none" '
+            f'stroke="#fff" stroke-width="4.6" stroke-linecap="round"></path><path d="M33 6.5c3.8 0 6.8 2.8 6.8 '
+            f'6.7-3.8 0-6.8-2.8-6.8-6.7z" fill="var(--sk-leaf)"></path></svg>')
+
+
+def wordmark(marime=34):
+    return (f'<div style="font-weight:800;font-size:{marime}px;letter-spacing:-.045em;color:var(--sk-ink);'
+            f'line-height:1">skill<b style="color:var(--sk-primary)">io</b></div>')
+
+
+def card_hero(titlu, sub, suma=None):
+    """Cardul verde „Lucrarea ta de azi” din design."""
+    bani = (f'<div><span class="sk-badge escrow" style="background:var(--sk-surface)">{ico("lock", 12)} '
+            f'{lei(suma)} blocați</span></div>' if suma else "")
+    return (f'<div class="sk-card hero" style="gap:6px"><b class="sk-b">{esc(titlu)}</b>'
+            f'<div class="sk-cap">{esc(sub)}</div>{bani}</div>')
+
+
+def asculta(text, key):
+    """Butonul „Ascultă”: voce ElevenLabs dacă avem cheie, altfel vocea browserului."""
+    from services import voce
+    if st.button("Ascultă", icon=":material/volume_up:", key=f"link_voce_{key}", type="tertiary"):
+        st.session_state[f"_voce_{key}"] = True
+    if not st.session_state.pop(f"_voce_{key}", False):
+        return
+    audio = voce.sintetizeaza(text)
+    if audio:
+        st.audio(audio, format="audio/mpeg", autoplay=True)
+        return
+    import json as _json
+    st.html(f"""<script>(function(){{const s=window.speechSynthesis;if(!s)return;s.cancel();
+const u=new SpeechSynthesisUtterance({_json.dumps(text)});u.lang="ro-RO";u.rate=1.0;s.speak(u);}})();</script>""",
+            unsafe_allow_javascript=True)
+
+
 def trust_pill(scor):
     return f'<span class="sk-tpill"><i>{ico("shield", 11)}</i>{scor}</span>'
 

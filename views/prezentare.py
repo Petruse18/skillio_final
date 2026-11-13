@@ -22,9 +22,8 @@ def _token(telefon):
 def ecran():
     st.markdown('<style>[data-testid="stMainBlockContainer"]{max-width:1400px !important;'
                 'padding:20px 28px !important}</style>', unsafe_allow_html=True)
-    c.h(f'<div class="sk-between"><div class="sk-row"><div style="width:44px;height:44px;border-radius:14px;'
-        f'background:var(--sk-primary);display:grid;place-items:center;color:#fff">{c.ico("leaf", 24)}</div>'
-        f'<div><div class="sk-title">SKILLIO</div><div class="sk-cap">{config.SLOGAN} · mod prezentare</div></div></div>'
+    c.h(f'<div class="sk-between"><div class="sk-row">{c.logo(44)}'
+        f'<div>{c.wordmark(26)}<div class="sk-cap">{config.SLOGAN} · mod prezentare</div></div></div>'
         f'<div class="sk-badges"><span class="sk-badge {"ok" if ai.activ() else ""}">Gemini: '
         f'{"conectat" if ai.activ() else "offline"}</span><span class="sk-badge {"trust" if nokia.activ() else ""}">'
         f'Nokia: {"conectat" if nokia.activ() else "simulat"}</span></div></div>')

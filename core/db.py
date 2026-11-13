@@ -151,6 +151,10 @@ CREATE TABLE IF NOT EXISTS notificari (
     user_id INTEGER, text TEXT, lucrare_id INTEGER, citit INTEGER DEFAULT 0, creat_la TEXT
 );
 CREATE TABLE IF NOT EXISTS setari (cheie TEXT PRIMARY KEY, valoare TEXT);
+CREATE TABLE IF NOT EXISTS sondaj (              -- Living Labs: chestionarul din aplicație
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, rol TEXT,
+    usor INTEGER, incredere INTEGER, recomanda INTEGER, ar_folosi TEXT, ce_lipseste TEXT, creat_la TEXT
+);
 CREATE INDEX IF NOT EXISTS i_lucrari_client ON lucrari(client_id);
 CREATE INDEX IF NOT EXISTS i_lucrari_mester ON lucrari(mester_id);
 CREATE INDEX IF NOT EXISTS i_feedback_mester ON feedback(mester_id);
@@ -162,10 +166,13 @@ CREATE INDEX IF NOT EXISTS i_mesaje_lucrare ON mesaje(lucrare_id);
 PG = bool(config.DATABASE_URL)
 # tabelele care au coloană „id” (la INSERT întoarcem id-ul rândului nou)
 _CU_ID = {"utilizatori", "portofoliu", "lucrari", "oferte", "plati", "extra", "mesaje", "feedback", "rapoarte",
-          "notificari"}
+          "notificari", "sondaj"}
 # coloane adăugate după prima versiune: le adăugăm și în bazele vechi
 _COLOANE_NOI = [("utilizatori", "email", "TEXT"), ("utilizatori", "auth_sub", "TEXT"),
-                ("utilizatori", "notif_extern", "INTEGER DEFAULT 1"), ("sesiuni", "expira_la", "TEXT")]
+                ("utilizatori", "notif_extern", "INTEGER DEFAULT 1"), ("sesiuni", "expira_la", "TEXT"),
+                ("utilizatori", "sol_wallet", "TEXT"),             # adresa Solana a meșterului (opțional)
+                ("plati", "lamports", "INTEGER"), ("plati", "tx_lock", "TEXT"), ("plati", "tx_final", "TEXT"),
+                ("lucrari", "pasaport", "TEXT"), ("lucrari", "tx_pasaport", "TEXT")]
 
 
 def _schema_pg():
@@ -322,14 +329,15 @@ def init():
 
 
 TABELE = ("utilizatori", "sesiuni", "portofoliu", "lucrari", "invitatii", "oferte", "plati", "extra",
-          "mesaje", "citit", "feedback", "rapoarte", "blocari", "notificari", "setari")
+          "mesaje", "citit", "feedback", "rapoarte", "blocari", "notificari", "sondaj", "setari")
 
 
 def reseteaza():
     """Șterge tot și pune la loc datele demo (buton în panoul de admin)."""
     with conn() as c:
-        for t in TABELE[:-1]:
-            c.execute(f"DELETE FROM {t}")
+        for t in TABELE:
+            if t not in ("setari", "sondaj"):     # răspunsurile oamenilor rămân și după resetarea demo-ului
+                c.execute(f"DELETE FROM {t}")
         c.execute("UPDATE setari SET valoare = '0' WHERE cheie = 'decalaj_zile'")
     from . import seed
     seed.populeaza()

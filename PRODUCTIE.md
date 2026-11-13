@@ -1,6 +1,6 @@
 # SKILLIO în producție: pas cu pas
 
-Codul pentru toți cei 5 pași e gata. Fiecare parte pornește doar când pui cheile ei. **Fără chei, aplicația merge
+Codul pentru toți pașii e gata. Fiecare parte pornește doar când pui cheile ei. **Fără chei, aplicația merge
 exact ca acum (demo pe laptop)**, deci prezentarea nu se strică dacă ceva nu e gata.
 
 | Pas | Ce îți trebuie | Unde pui datele | Cost |
@@ -10,8 +10,11 @@ exact ca acum (demo pe laptop)**, deci prezentarea nu se strică dacă ceva nu e
 | 3. Poze în cloud | **Vultr Object Storage** | `.env` → `S3_...` | aprox. 6 $/lună |
 | 4. Server cu domeniu și HTTPS | server **Vultr** + un domeniu (sau DuckDNS, gratuit) | `.env` → `DOMENIU` | aprox. 5-10 $/lună |
 | 5. Notificări | **Gmail** (email) și/sau **Twilio** (SMS) | `.env` → `SMTP_...`, `TWILIO_...` | gratuit / credit de probă |
+| 6. Plăți pe blockchain | portofel **Solana devnet** (Phantom sau scriptul nostru) | `.env` → `SOLANA_SECRET_KEY` | gratuit (SOL de test) |
+| 7. Voce | cont **ElevenLabs** | `.env` → `ELEVENLABS_API_KEY` | gratuit (10.000 caractere/lună) |
+| AI | cheie **Gemini** (Google AI Studio) | `.env` → `GEMINI_API_KEY` | gratuit |
 
-Ordinea recomandată: 1 → 2 → 3 → 5 pe laptop (verifici că merge), apoi 4 (urci totul pe server).
+Ordinea recomandată: Gemini, 6 și 7 (cele mai rapide, câte 5 minute, și se văd direct în demo), apoi 1 → 2 → 3 → 5 pe laptop (verifici că merge), apoi 4 (urci totul pe server).
 
 > **Fișierele secrete nu se urcă niciodată pe GitHub:** `.env` și `.streamlit/secrets.toml` sunt deja în `.gitignore`.
 > Nu le trimite pe chat. Pe server le creezi direct acolo.
@@ -181,6 +184,53 @@ Peste 1-2 minute aplicația e pe `https://skillio-tm.duckdns.org`.
 
 ---
 
+## 6. Plăți verificabile pe Solana (devnet)
+
+Ce face: când clientul plătește, suma (simbolică, 1 leu = 0,0001 SOL) trece din portofelul platformei într-un „seif”.
+La confirmare, din seif pleacă 90% la meșter și 10% la platformă, iar memo-ul tranzacției conține amprenta lucrării
+(„pașaportul”). La anulare banii se întorc. Pe ecranul lucrării apare cardul **Plată verificabilă pe blockchain** cu link spre
+Solana Explorer pentru fiecare tranzacție. Devnet e rețeaua de test: SOL-ul e gratuit și nu are valoare.
+
+Varianta cea mai simplă (fără Phantom):
+
+1. În terminalul VS Code (cu `.venv` activat): `pip install -r requirements.txt`, apoi `python -m scripts.solana_portofel`.
+2. Scriptul îți afișează un rând `SOLANA_SECRET_KEY=...`. Copiază-l în `.env`. **Nu-l pune pe chat sau pe GitHub.**
+3. Rulează iar `python -m scripts.solana_portofel`. Îți arată adresa platformei și cere singur 1 SOL de test.
+   Dacă spune că a fost refuzat (limită), intră pe https://faucet.solana.com, alege **Devnet**, lipește adresa și cere 5 SOL.
+4. Repornește aplicația. În Admin → **Integrări și producție** scrie „Solana: conectat”, cu butonul **Verifică soldul**.
+
+Varianta cu Phantom (arată bine la juriu):
+
+1. Instalează extensia **Phantom** în Chrome, creează un portofel.
+2. Setări → Developer Settings → **Testnet Mode** pornit, rețeaua **Solana Devnet**.
+3. Setări → contul tău → **Show Private Key** → copiază cheia în `.env` la `SOLANA_SECRET_KEY=`.
+4. Cere SOL de test pe https://faucet.solana.com (Devnet) pentru adresa din Phantom.
+5. Opțional: meșterul își poate pune adresa lui Phantom în **Profil → Portofel Solana**; altfel platforma îi creează una.
+
+La prezentare: după ce Ana confirmă lucrarea, deschide cardul **Plată verificabilă pe blockchain** și apasă pe linkul tranzacției.
+Juriul vede pe Solana Explorer transferul 90/10 și memo-ul cu pașaportul. Dacă internetul cade, plata rămâne simulată.
+
+---
+
+## 7. Voce cu ElevenLabs
+
+Ce face: butonul **Ascultă** citește diagnosticul AI și ofertele primite, cu o voce naturală în română.
+Fără cheie, citește vocea browserului (mai robotică, dar merge).
+
+1. Cont pe https://elevenlabs.io (gratuit).
+2. Profil (stânga jos) → **API Keys** → **Create API key**. Bifează permisiunea **Text to Speech**.
+3. În `.env`: `ELEVENLABS_API_KEY=...`. Vocea implicită merge; dacă vrei alta, ia „Voice ID” din Voice Library și pune-l la `ELEVENLABS_VOICE_ID`.
+4. Repornește aplicația și apasă **Ascultă** după un diagnostic.
+
+---
+
+## Gemini (diagnosticul AI)
+
+1. https://aistudio.google.com → **Get API key** → **Create API key**.
+2. În `.env`: `GEMINI_API_KEY=...`. Repornește. Sub diagnostic scrie „Gemini” în loc de „reguli simple”.
+
+---
+
 ## Ce face fiecare fișier nou
 
 | Fișier | Rol |
@@ -194,3 +244,7 @@ Peste 1-2 minute aplicația e pe `https://skillio-tm.duckdns.org`.
 | `scripts/urca_poze_in_cloud.py` | urcă pozele locale în cloud |
 | `Dockerfile`, `docker-compose.yml`, `Caddyfile` | serverul: aplicația + HTTPS automat |
 | `.streamlit/secrets.toml.example` | model pentru datele Auth0 |
+| `services/solana.py` | plata blocată pe Solana devnet: blocare, eliberare 90/10, returnare, pașaport |
+| `scripts/solana_portofel.py` | creează portofelul platformei, arată soldul, cere SOL de test |
+| `services/voce.py` | ElevenLabs: transformă textul în voce |
+| `views/comunitate.py` | Living Labs: chestionarul din aplicație și pagina „Ce e nou” |

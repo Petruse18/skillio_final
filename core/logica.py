@@ -18,7 +18,7 @@ import json
 import secrets
 from datetime import datetime, timedelta
 
-from services import geo, mesaje_externe, nokia, stocare
+from services import geo, mesaje_externe, nokia, solana, stocare
 
 from . import config, db, timp, trust
 
@@ -132,7 +132,7 @@ def sterge_sesiune(token):
 
 
 def actualizeaza_profil(uid, **campuri):
-    permise = {"nume", "adresa", "cartier", "despre", "meserii", "experienta_ani", "tarif_ora", "raza_km",
+    permise = {"sol_wallet", "nume", "adresa", "cartier", "despre", "meserii", "experienta_ani", "tarif_ora", "raza_km",
                "disponibil", "poza", "ghid_vazut", "act_status", "act_poza", "departe_demo", "lat", "lon"}
     campuri = {k: v for k, v in campuri.items() if k in permise}
     if "cartier" in campuri and "lat" not in campuri:
@@ -301,6 +301,7 @@ def anuleaza_lucrare(lid, de_cine, motiv="Anulată de client"):
     platite = db.q("SELECT * FROM plati WHERE lucrare_id = ? AND status = 'blocat'", (lid,))
     for p in platite:
         db.ex("UPDATE plati SET status = 'returnat', rezolvat_la = ? WHERE id = ?", (timp.iso(timp.acum()), p["id"]))
+    _returneaza_onchain(lid, platite)
     db.ex("UPDATE lucrari SET status = 'anulata', anulat_motiv = ? WHERE id = ?", (motiv, lid))
     db.ex("UPDATE oferte SET status = 'respinsa' WHERE lucrare_id = ? AND status = 'trimisa'", (lid,))
     total = sum(p["suma"] for p in platite)
@@ -397,13 +398,56 @@ def plateste(lid, client_id):
     if l["client_id"] != client_id or l["status"] != "de_plata":
         raise Eroare("Plata nu e posibilă acum.")
     o = db.q1("SELECT * FROM oferte WHERE id = ?", (l["oferta_id"],))
-    db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la) "
-          "VALUES(?,?,?,?,?,?,?,?)", (lid, client_id, l["mester_id"], o["total"], 0, "oferta", "blocat",
-                                      timp.iso(timp.acum())))
+    pid = db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la) "
+                "VALUES(?,?,?,?,?,?,?,?)", (lid, client_id, l["mester_id"], o["total"], 0, "oferta", "blocat",
+                                            timp.iso(timp.acum())))
+    _blocheaza_onchain(pid, lid, o["total"])
     db.ex("UPDATE lucrari SET status = 'programata' WHERE id = ?", (lid,))
     mesaj_sistem(lid, f"{timp.lei(o['total'])} plătiți și blocați în SKILLIO până la finalul lucrării.")
     notifica(l["mester_id"], f"Clientul a plătit {timp.lei(o['total'])} (blocați până la final). "
                              f"Te așteaptă {timp.data_ora(l['programat_la'])}.", lid, extern=True)
+
+
+# --- plata pe blockchain (Solana devnet), opțională --------------------------------
+def _blocheaza_onchain(pid, lid, suma):
+    if not solana.activ():
+        return
+
+    def salveaza(rez):
+        sig, lam = rez
+        db.ex("UPDATE plati SET tx_lock = ?, lamports = ? WHERE id = ?", (sig, lam, pid))
+        mesaj_sistem(lid, f"Plata de {timp.lei(suma)} e blocată și pe blockchain (Solana devnet).")
+    solana.in_fundal("lock", lambda: solana.blocheaza(lid, suma), salveaza)
+
+
+def _elibereaza_onchain(lid, plati):
+    l = lucrare(lid)
+    amprenta = solana.amprenta_lucrare(l, plati)
+    db.ex("UPDATE lucrari SET pasaport = ? WHERE id = ?", (amprenta, lid))
+    lam = sum(p["lamports"] or 0 for p in plati if p.get("tx_lock"))
+    if not solana.activ() or not lam:
+        return
+    m = user(l["mester_id"])
+    catre = solana.portofel_mester(m["id"], m.get("sol_wallet"))
+
+    def salveaza(sig):
+        for p in plati:
+            if p.get("tx_lock"):
+                db.ex("UPDATE plati SET tx_final = ? WHERE id = ?", (sig, p["id"]))
+        db.ex("UPDATE lucrari SET tx_pasaport = ? WHERE id = ?", (sig, lid))
+        mesaj_sistem(lid, "Banii au fost eliberați on-chain, iar pașaportul lucrării a fost scris pe Solana.")
+    solana.in_fundal("release", lambda: solana.elibereaza(lid, lam, catre, amprenta), salveaza)
+
+
+def _returneaza_onchain(lid, plati):
+    cu_tx = [p for p in plati if p.get("tx_lock") and p.get("lamports")]
+    if not solana.activ() or not cu_tx:
+        return
+
+    def salveaza(sig):
+        for p in cu_tx:
+            db.ex("UPDATE plati SET tx_final = ? WHERE id = ?", (sig, p["id"]))
+    solana.in_fundal("refund", lambda: solana.returneaza(lid, sum(p["lamports"] for p in cu_tx)), salveaza)
 
 
 def bani_lucrare(lid):
@@ -459,9 +503,10 @@ def raspunde_extra(eid, client_id, accept: bool):
         raise Eroare("Oferta nu mai este valabilă.")
     db.ex("UPDATE extra SET status = ? WHERE id = ?", ("acceptata" if accept else "respinsa", eid))
     if accept:
-        db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la) "
-              "VALUES(?,?,?,?,?,?,?,?)", (l["id"], client_id, l["mester_id"], e["suma"], 0, "extra", "blocat",
-                                          timp.iso(timp.acum())))
+        pid = db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la) "
+                    "VALUES(?,?,?,?,?,?,?,?)", (l["id"], client_id, l["mester_id"], e["suma"], 0, "extra", "blocat",
+                                                timp.iso(timp.acum())))
+        _blocheaza_onchain(pid, l["id"], e["suma"])
         mesaj_sistem(l["id"], f"Lucrarea în plus a fost acceptată: {timp.lei(e['suma'])} plătiți și blocați.")
     else:
         mesaj_sistem(l["id"], "Clientul a refuzat lucrarea în plus.")
@@ -489,12 +534,14 @@ def confirma_lucrare(lid, client_id):
         raise Eroare("Lucrarea nu așteaptă confirmare.")
     acum = timp.acum()
     total = 0
-    for p in db.q("SELECT * FROM plati WHERE lucrare_id = ? AND status = 'blocat'", (lid,)):
+    blocate = db.q("SELECT * FROM plati WHERE lucrare_id = ? AND status = 'blocat'", (lid,))
+    for p in blocate:
         com = round(p["suma"] * config.COMISION, 2)
         db.ex("UPDATE plati SET status = 'eliberat', comision = ?, rezolvat_la = ? WHERE id = ?",
               (com, timp.iso(acum), p["id"]))
         total += p["suma"]
     db.ex("UPDATE lucrari SET status = 'finalizata', confirmat_la = ? WHERE id = ?", (timp.iso(acum), lid))
+    _elibereaza_onchain(lid, blocate)
     programeaza_feedback(lid, acum)
     net = total * (1 - config.COMISION)
     mesaj_sistem(lid, f"Clientul a confirmat lucrarea. {timp.lei(net)} au ajuns la meșter "
@@ -630,9 +677,11 @@ def rezolva_raport(rid, confirmat: bool, rezolutie=""):
         l = lucrare(r["lucrare_id"])
         if l["status"] == "disputa":
             if confirmat:  # clientul are dreptate: banii se întorc
-                for p in db.q("SELECT * FROM plati WHERE lucrare_id = ? AND status = 'blocat'", (l["id"],)):
+                platite = db.q("SELECT * FROM plati WHERE lucrare_id = ? AND status = 'blocat'", (l["id"],))
+                for p in platite:
                     db.ex("UPDATE plati SET status = 'returnat', rezolvat_la = ? WHERE id = ?",
                           (timp.iso(timp.acum()), p["id"]))
+                _returneaza_onchain(l["id"], platite)
                 db.ex("UPDATE lucrari SET status = 'anulata', anulat_motiv = 'Dispută câștigată de client' "
                       "WHERE id = ?", (l["id"],))
                 mesaj_sistem(l["id"], "Echipa SKILLIO a dat dreptate clientului. Banii s-au întors la client.")

@@ -30,6 +30,19 @@ def acasa(u):
         st.session_state["f_meserie"] = None
         c.go("cauta")
 
+    # Lucrarea următoare (cardul verde din design)
+    urm = sorted([l for l in logica.lucrari_client(u["id"]) if l["status"] in ("de_plata", "programata", "sosit", "gata")
+                  and l["programat_la"]], key=lambda l: l["programat_la"])
+    if urm:
+        l = urm[0]
+        bani = logica.bani_lucrare(l["id"])["blocat"]
+        m = logica.user(l["mester_id"]) if l["mester_id"] else None
+        cand = timp.din_iso(l["programat_la"])
+        c.h(c.card_hero(f'Lucrarea ta {timp.zi_frumos(cand.date())} · {timp.ora(cand)}',
+                        f'{m["nume"] if m else "Meșterul"} · {l["titlu"]} · {logica.STATUS[l["status"]][0]}', bani))
+        if st.button("Deschide lucrarea", key="link_hero", type="tertiary"):
+            c.go("lucrare", l["id"])
+
     # Asistentul AI: cel mai rapid drum spre o solicitare
     with st.container(key="card_ai"):
         c.h(f'<div class="sk-row">{c.ico("sparkles", 22)}<div class="sk-grow"><div class="sk-h">Descrie problema</div>'
@@ -228,6 +241,9 @@ def solicitare(u):
                f'{intreb}</ul>' if intreb else "")
             + f'<div class="sk-cap">Analiză: {sursa} · încredere {d.get("incredere", .5):.0%}</div>')
     c.alerta(f'<b>Până vine meșterul:</b> {c.esc(d["sfat_siguranta"])}', "escrow", "alert")
+    c.asculta(f'Ai nevoie de un {m["nume"].lower()}. {d["descriere"]} Prețul orientativ e între {d["pret_min"]} și '
+              f'{d["pret_max"]} de lei, iar lucrarea durează cam {d["durata_min"]} de minute. '
+              f'Până vine meșterul: {d["sfat_siguranta"]}', "diag")
     if st.session_state.get("sol_poza"):
         c.poza(st.session_state["sol_poza"], 150)
 

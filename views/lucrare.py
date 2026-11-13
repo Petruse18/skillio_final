@@ -5,7 +5,7 @@ import streamlit as st
 
 from core import config, logica, timp
 from core.logica import Eroare
-from services import geo
+from services import geo, solana
 from ui import comp as c
 from ui import harta
 
@@ -85,9 +85,37 @@ def ecran(u, lid):
         if st.button(f"Chat{f' ({nec} noi)' if nec else ''}", icon=":material/chat:", width="stretch",
                      key="lucr_chat"):
             c.go("chat", l["id"])
+    _blockchain(l)
     if l["status"] not in ("deschisa",) or e_client:
         with st.expander("Cum a decurs până acum"):
             c.h(_cronologie(l))
+
+
+def _blockchain(l):
+    """Tranzacțiile Solana ale lucrării (dacă plata a mers on-chain) și pașaportul ei."""
+    plati = logica.bani_lucrare(l["id"])["rows"]
+    rand = []
+    for p in plati:
+        if p.get("tx_lock"):
+            rand.append((f'Blocat: {c.lei(p["suma"])} ({p["tip"]})', p["tx_lock"]))
+    finale = {p["tx_final"]: p["status"] for p in plati if p.get("tx_final")}
+    for sig, stare in finale.items():
+        rand.append(("Eliberat către meșter (90%) și SKILLIO (10%)" if stare == "eliberat" else "Returnat clientului",
+                     sig))
+    if not rand and not l.get("pasaport"):
+        return
+    li = "".join(f'<div class="sk-li"><span class="sk-grow">{c.esc(t)}</span><a href="{solana.link_tx(sig)}" '
+                 f'target="_blank" style="color:var(--sk-primary);font-weight:700">{sig[:6]}…{sig[-4:]} ↗</a></div>'
+                 for t, sig in rand)
+    pas = ""
+    if l.get("pasaport"):
+        pas = (f'<div class="sk-cap" style="margin-top:6px"><b>Pașaportul lucrării</b> (amprentă sha256): '
+               f'<code>{l["pasaport"][:16]}…</code>' +
+               (f' · <a href="{solana.link_tx(l["tx_pasaport"])}" target="_blank">scris pe Solana ↗</a>'
+                if l.get("tx_pasaport") else "") + '</div>')
+    c.h(f'<div class="sk-card flat" style="gap:6px"><div class="sk-row">{c.ico("lock", 16)}<b class="sk-b">'
+        f'Plată verificabilă pe blockchain</b><span class="sk-badge" style="margin-left:auto">Solana devnet</span>'
+        f'</div><div class="sk-list">{li}</div>{pas}</div>')
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +150,10 @@ def _client(u, l):
             elif sortare == "Cel mai devreme":
                 oferte.sort(key=lambda o: o["propus_la"])
         cel_mai_bun = max(oferte, key=lambda o: o["trust"]["scor"] - o["total"] / 40)["id"] if oferte else None
+        if oferte:
+            c.asculta(f"Ai {len(oferte)} {'ofertă' if len(oferte) == 1 else 'oferte'}. " + " ".join(
+                f'{o["mester"]["nume"]}: {o["total"]:.0f} de lei, {timp.data_ora(o["propus_la"])}, '
+                f'Trust Score {o["trust"]["scor"]}.' for o in oferte), f"of{l['id']}")
         for o in oferte:
             m = o["mester"]
             rec = '<span class="sk-badge ok">Recomandat</span>' if o["id"] == cel_mai_bun and len(oferte) > 1 else ""

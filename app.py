@@ -9,7 +9,7 @@ import streamlit as st
 from core import config, db, logica
 from ui import comp as c
 from services import autentificare
-from views import admin, client, comun, lucrare, mester, prezentare
+from views import admin, client, comun, comunitate, lucrare, mester, prezentare
 
 st.set_page_config(page_title="SKILLIO", page_icon="🌿",
                    layout="wide" if st.query_params.get("mod") == "prezentare" else "centered",
@@ -41,11 +41,11 @@ def _urmareste():
 
 NAV = {
     "client": [("acasa", "Acasă", ":material/home:"), ("cauta", "Caută", ":material/search:"),
-               ("solicitare", "Cere", ":material/add:"), ("mesaje", "Mesaje", ":material/chat:"),
-               ("cont", "Cont", ":material/person:")],
-    "mester": [("acasa", "Acasă", ":material/home:"), ("solicitari", "Lucrări", ":material/map:"),
-               ("calendar", "Calendar", ":material/calendar_month:"), ("mesaje", "Mesaje", ":material/chat:"),
-               ("cont", "Cont", ":material/person:")],
+               ("solicitare", "Cerere", ":material/add:"), ("mesaje", "Chat", ":material/chat:"),
+               ("cont", "Profil", ":material/person:")],
+    "mester": [("acasa", "Acasă", ":material/home:"), ("solicitari", "Solicitări", ":material/map:"),
+               ("calendar", "Calendar", ":material/calendar_month:"), ("mesaje", "Chat", ":material/chat:"),
+               ("cont", "Profil", ":material/person:")],
     "admin": [("acasa", "Panou", ":material/dashboard:"), ("notificari", "Alerte", ":material/notifications:"),
               ("cont", "Cont", ":material/person:")],
 }
@@ -99,7 +99,7 @@ def main():
                    "profilul tău afișează un avertisment până la următoarea verificare.")
 
     rol = u["rol"]
-    if pag not in ("ghid", "chat", "lucrare", "solicitare", "mester", "notificari"):
+    if pag not in ("ghid", "chat", "lucrare", "solicitare", "mester", "notificari", "feedback", "noutati"):
         _clopotel(u)
 
     ecrane = {
@@ -109,6 +109,8 @@ def main():
         "chat": lambda: comun.chat(u, id_),
         "mester": lambda: comun.profil_mester(u, id_),
         "cont": lambda: comun.cont(u),
+        "feedback": lambda: comunitate.feedback(u),
+        "noutati": lambda: comunitate.noutati(u),
         "lucrare": lambda: lucrare.ecran(u, id_),
     }
     if rol == "client":
