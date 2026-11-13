@@ -31,6 +31,7 @@
 .sk-btn.danger{background:transparent;color:var(--sk-danger);min-height:36px;padding:8px 10px;font-size:14px}
 .sk-btn.sm{min-height:36px;padding:8px 12px;font-size:13px;border-radius:var(--sk-r-sm)}
 .sk-btn.icon{width:44px;min-height:44px;height:44px;padding:0;border-radius:50%}
+.sk-btn.sk-grow{flex:1}
 .sk-btn[aria-disabled="true"],.sk-btn:disabled{background:var(--sk-surface-2);color:var(--sk-muted);cursor:not-allowed}
 
 /* ---------- Inputs ---------- */
