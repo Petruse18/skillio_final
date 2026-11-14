@@ -2,18 +2,21 @@
 Meșterul dă doar informații de urgență (ce închizi, ce nu atingi), nu reparația de la cap la coadă.
 Apelul se înregistrează (cu acordul ambilor), banii stau blocați 24 de ore, iar o dispută o decide un mediator."""
 from datetime import timedelta
-
+ 
 import streamlit as st
-
+ 
 from core import config, logica, timp
 from core.logica import Eroare
 from ui import comp as c
-
-JITSI = "https://meet.jit.si/"
+ 
+import os
+# Servere publice fără login (meet.jit.si cere acum un moderator logat). Se pot schimba din .env.
+VIDEO = os.getenv("SOS_VIDEO_URL", "https://meet.ffmuc.net/").strip()
+VIDEO_REZERVA = "https://vdo.ninja/?room="
 STARI = {"asteapta": "Căutăm un meșter", "in_apel": "În apel", "incheiat": "Apel încheiat",
          "disputa": "La mediator", "eliberat": "Plătit", "returnat": "Bani returnați"}
-
-
+ 
+ 
 def _act(fn, *a, ok=None):
     try:
         r = fn(*a)
@@ -23,18 +26,22 @@ def _act(fn, *a, ok=None):
         return r
     except Eroare as e:
         st.error(str(e))
-
-
+ 
+ 
 def card_acasa(u):
-    """Cardul SOS de pe ecranul clientului."""
+    """Cardul SOS de pe ecranul clientului (plus apelurile aflate în dispută)."""
+    for s in [x for x in logica.sos_client(u["id"]) if x["status"] == "disputa"]:
+        _card_disputa(s, u)
+        if st.button("Vezi apelul SOS", key=f"sos_home_d{s['id']}", type="tertiary"):
+            c.go("sos", s["id"])
     with st.container(key="card_sos"):
         c.h(f'<div class="sk-row"><span class="sk-sos-dot"></span><div class="sk-grow"><div class="sk-h">SOS · '
             f'{c.lei(config.SOS_PRET)}</div><div class="sk-cap">Țeavă spartă, miros de gaz, fără curent? Un meșter '
             f'te ghidează prin video în câteva minute.</div></div></div>')
         if st.button("Cere ajutor acum", key="sos_start", type="primary", width="stretch", icon=":material/videocam:"):
             c.go("sos")
-
-
+ 
+ 
 def ecran(u, sid=None):
     c.bara_sus("SOS", "acasa")
     if sid:
@@ -43,10 +50,15 @@ def ecran(u, sid=None):
     if u["rol"] == "mester":
         _lista_mester(u)
         return
-    deschis = next((s for s in logica.sos_client(u["id"]) if s["status"] in ("asteapta", "in_apel", "incheiat")), None)
+    toate = logica.sos_client(u["id"])
+    deschis = next((s for s in toate if s["status"] in ("asteapta", "in_apel", "incheiat")), None)
     if deschis:
         _apel(u, deschis)
         return
+    for s in [x for x in toate if x["status"] == "disputa"]:
+        _card_disputa(s, u)
+        if st.button("Deschide apelul", key=f"sos_d{s['id']}", width="stretch"):
+            c.go("sos", s["id"])
     c.h('<div class="sk-title">Ajutor de urgență</div><div class="sk-b" style="color:var(--sk-muted)">'
         'Un meșter verificat îți spune prin video ce să închizi și ce să nu atingi, până ajunge cineva.</div>')
     mes = st.selectbox("Ce fel de problemă?", list(config.MESERII), format_func=c.meserie_nume, key="sos_mes")
@@ -63,15 +75,23 @@ def ecran(u, sid=None):
         sid = _act_val(logica.cere_sos, u["id"], mes, prob, acord)
         if sid:
             c.go("sos", sid)
-
-
+ 
+ 
 def _act_val(fn, *a):
     try:
         return fn(*a)
     except Eroare as e:
         st.error(str(e))
-
-
+ 
+ 
+def _card_disputa(s, u):
+    cine = (s["rezolutie"] or "").replace("__deschisa_de:", "") or "O parte"
+    c.h(f'<div class="sk-verdict danger"><div class="sk-between"><b>{c.esc(cine)} a deschis o dispută</b>'
+        f'<span>La mediator</span></div><div>SOS: {c.esc(s["problema"])} · Motiv: {c.esc(s["motiv_disputa"] or "")}'
+        f'</div><div class="sk-cap">Un mediator uman ascultă înregistrarea apelului și decide. '
+        f'{c.lei(s["suma"])} rămân blocați până atunci.</div></div>')
+ 
+ 
 def _lista_mester(u):
     rows = logica.sos_deschise(u["id"])
     c.h('<div class="sk-title">Apeluri SOS</div><div class="sk-b" style="color:var(--sk-muted)">'
@@ -84,13 +104,15 @@ def _lista_mester(u):
             c.h(f'<div class="sk-between"><b class="sk-h">{c.esc(s["problema"])}</b><span class="sk-badge">'
                 f'{STARI[s["status"]]}</span></div><div class="sk-cap">{c.esc(cl["nume"].split()[0])} · '
                 f'{c.esc(cl["cartier"])} · {c.meserie_nume(s["meserie"])} · {timp.de_cand(s["creat_la"])}</div>')
+            if s["status"] == "disputa":
+                _card_disputa(s, u)
             if s["status"] == "asteapta":
                 if st.button("Preiau apelul", type="primary", width="stretch", key=f"sos_acc{s['id']}"):
                     _act(logica.accepta_sos, s["id"], u["id"])
             elif st.button("Deschide", width="stretch", key=f"sos_open{s['id']}"):
                 c.go("sos", s["id"])
-
-
+ 
+ 
 def _apel(u, s):
     e_client = u["id"] == s["client_id"]
     alt = logica.user(s["mester_id"]) if e_client and s["mester_id"] else logica.user(s["client_id"])
@@ -105,8 +127,10 @@ def _apel(u, s):
         c.h(f'<div class="sk-call"><div class="sk-call-av">{c.initiale(alt["nume"])}</div><div>'
             f'<div class="sk-h">{c.esc(alt["nume"])}</div><div class="sk-cap">Apel video securizat · înregistrat · '
             f'numerele rămân ascunse</div></div><span class="sk-rec">REC</span></div>')
-        st.link_button("Intră în apelul video", JITSI + s["camera"], type="primary", width="stretch",
+        st.link_button("Intră în apelul video", VIDEO + s["camera"], type="primary", width="stretch",
                        icon=":material/videocam:")
+        st.link_button("Nu se deschide? Server de rezervă", VIDEO_REZERVA + s["camera"], width="stretch",
+                       icon=":material/sync_alt:")
         st.caption("Apelul se deschide în browser, fără număr de telefon. Ambele părți intră în aceeași cameră.")
         if st.button("Închide apelul", width="stretch", key="sos_end", icon=":material/call_end:"):
             _act(logica.incheie_sos, s["id"], u["id"], ok="Apel încheiat.")
@@ -122,7 +146,14 @@ def _apel(u, s):
             if st.button("Trimite mediatorului", key="danger_sos_disp"):
                 _act(logica.disputa_sos, s["id"], u["id"], motiv, ok="Un mediator verifică înregistrarea apelului.")
     if s["status"] == "disputa":
-        c.alerta("Un mediator SKILLIO ascultă înregistrarea și decide. Banii rămân blocați.", "escrow", "alert")
+        _card_disputa(s, u)
     if s["status"] in ("eliberat", "returnat"):
-        c.alerta(("Meșterul a primit plata." if s["status"] == "eliberat" else "Banii s-au întors la client.")
-                 + (f" Mediator: {c.esc(s['rezolutie'])}" if s["rezolutie"] else ""), "ai", "check")
+        rez = s["rezolutie"] if s["rezolutie"] and not s["rezolutie"].startswith("__") else ""
+        if s["motiv_disputa"]:
+            c.h(f'<div class="sk-verdict ok"><div class="sk-between"><b>Mediatorul a decis</b><span>'
+                f'{"Bani returnați clientului" if s["status"] == "returnat" else "Meșterul a fost plătit"}</span></div>'
+                f'<div>{c.esc(rez or "Cazul a fost închis.")}</div></div>')
+        else:
+            c.alerta("Meșterul a primit plata." if s["status"] == "eliberat" else "Banii s-au întors la client.",
+                     "ai", "check")
+ 

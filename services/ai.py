@@ -1,5 +1,5 @@
 """Asistentul AI: din descriere (și poză) scoate meseria, urgența, prețul și ce să aducă meșterul.
-
+ 
 Cu GEMINI_API_KEY în .env folosește Gemini. Fără cheie (sau dacă pică internetul)
 folosește o clasificare simplă după cuvinte-cheie, ca demo-ul să nu se blocheze.
 Rezultatul are mereu aceeași formă (vezi `_rezervă`).
@@ -7,11 +7,11 @@ Rezultatul are mereu aceeași formă (vezi `_rezervă`).
 import json
 import logging
 import re
-
+ 
 from core import config
-
+ 
 log = logging.getLogger("skillio.ai")
-
+ 
 PROMPT = """Ești asistentul aplicației SKILLIO din Timișoara, care leagă clienți de meșteri.
 Clientul descrie o problemă din casă (și uneori trimite o poză). Răspunde DOAR cu JSON valid, în română:
 {{
@@ -28,14 +28,14 @@ Clientul descrie o problemă din casă (și uneori trimite o poză). Răspunde D
   "incredere": număr între 0 și 1
 }}
 Nu pune diagnostic definitiv: evaluarea finală o face meșterul.
-
+ 
 Descrierea clientului: {text}"""
-
-
+ 
+ 
 def activ() -> bool:
     return bool(config.GEMINI_API_KEY)
-
-
+ 
+ 
 def _rezerva(text: str) -> dict:
     t = (text or "").lower()
     scoruri = {k: sum(1 for c in m["cuvinte"] if c in t) for k, m in config.MESERII.items()}
@@ -69,8 +69,8 @@ def _rezerva(text: str) -> dict:
         "incredere": 0.55 if scoruri[meserie] else 0.3,
         "sursa": "reguli",
     }
-
-
+ 
+ 
 def _curata(d: dict, text: str) -> dict:
     baza = _rezerva(text)
     if d.get("meserie") not in config.MESERII:
@@ -92,31 +92,24 @@ def _curata(d: dict, text: str) -> dict:
             d[k] = baza[k]
         d[k] = [str(x) for x in d[k]][:5]
     return d
-
-
+ 
+ 
 def diagnosticheaza(text: str, poza: bytes | None = None, mime: str = "image/jpeg") -> dict:
     if activ():
         try:
-            from google import genai
             from google.genai import types
-            client = genai.Client(api_key=config.GEMINI_API_KEY)
             parti = [PROMPT.format(meserii=list(config.MESERII), text=text or "(fără text, doar poză)")]
             if poza:
                 parti.append(types.Part.from_bytes(data=poza, mime_type=mime))
-            r = client.models.generate_content(
-                model=config.GEMINI_MODEL, contents=parti,
-                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2))
-            d = json.loads(r.text)
-            if isinstance(d, list):
-                d = d[0]
+            d = _gemini_json(parti)
             d = _curata(d, text)
             d["sursa"] = "gemini"
             return d
         except Exception as e:  # noqa: BLE001
             log.warning("Gemini a eșuat, folosesc regulile: %s", e)
     return _rezerva(text)
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # Părerea AI despre prețul reconfirmat la fața locului (doar consultativ: decide clientul)
 # ---------------------------------------------------------------------------
@@ -127,19 +120,42 @@ Uită-te și la poză, dacă există. Răspunde DOAR cu JSON valid, în română
 {{"verdict": "rezonabil" | "de_discutat" | "ridicat",
   "interval_min": număr, "interval_max": număr,
   "explicatie": "1-2 propoziții simple pentru client: ce se vede în poză și dacă motivul justifică prețul"}}"""
-
-
+ 
+ 
+_MODELE = []  # modelul care a mers ultima dată e pus primul
+ 
+ 
 def _gemini_json(parti):
+    """Încearcă mai multe modele Gemini; dacă unul lipsește sau e supraîncărcat, trece la următorul."""
     from google import genai
     from google.genai import types
-    client = genai.Client(api_key=config.GEMINI_API_KEY)
-    r = client.models.generate_content(
-        model=config.GEMINI_MODEL, contents=parti,
-        config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2))
-    d = json.loads(r.text)
-    return d[0] if isinstance(d, list) else d
-
-
+    client = genai.Client(api_key=config.GEMINI_API_KEY, http_options=types.HttpOptions(api_version="v1beta"))
+    if not _MODELE:
+        for m in (config.GEMINI_MODEL, "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-lite-latest",
+                  "gemini-flash-latest", "gemini-3-flash-preview", "gemini-2.5-flash"):
+            if m and m not in _MODELE:
+                _MODELE.append(m)
+    eroare = None
+    for m in list(_MODELE):
+        try:
+            r = client.models.generate_content(
+                model=m, contents=parti,
+                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2))
+        except Exception as e:  # noqa: BLE001
+            log.info("Gemini %s indisponibil, încerc alt model", m)
+            if any(k in str(e) for k in ("404", "NOT_FOUND", "503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED",
+                                         "500", "INTERNAL")):
+                eroare = e
+                continue
+            raise
+        if _MODELE[0] != m:
+            _MODELE.remove(m)
+            _MODELE.insert(0, m)
+        d = json.loads(r.text)
+        return d[0] if isinstance(d, list) else d
+    raise eroare or RuntimeError("niciun model Gemini disponibil")
+ 
+ 
 def verifica_pret(l, vechi, nou, motiv, poza=None, mime="image/jpeg") -> dict:
     try:
         d = json.loads(l.get("diagnostic") or "{}")
@@ -165,8 +181,8 @@ def verifica_pret(l, vechi, nou, motiv, poza=None, mime="image/jpeg") -> dict:
             "explicatie": ("Prețul e în intervalul obișnuit pentru o lucrare de acest fel." if verdict == "rezonabil"
                            else "Prețul e peste ce se plătește de obicei. Cere meșterului detalii înainte să accepți."),
             "sursa": "reguli"}
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # Agentul clientului: explică problema și împarte lucrările mari în etape
 # ---------------------------------------------------------------------------
@@ -181,13 +197,13 @@ Răspunde DOAR cu JSON valid, în română:
   "sfat": "o propoziție: la ce să fie atent clientul"}}
 Prețuri Timișoara 2026, manoperă + materiale uzuale. O problemă mică are o singură etapă.
 Cererea clientului: {text}"""
-
+ 
 _SABLON_BAIE = [("Instalații sanitare noi", "instalator", "Trasee noi de apă și scurgere, înainte de faianță.", 900, 1800, 480),
                 ("Circuite și prize baie", "electrician", "Circuit separat, prize protejate și corpuri de iluminat.", 500, 1100, 300),
                 ("Montaj gresie și faianță", "universal", "Hidroizolație, apoi gresie și faianță.", 2200, 4200, 1440),
                 ("Finisaje și zugrăveli", "zugrav", "Tavan și pereți, vopsea rezistentă la umezeală.", 400, 900, 300)]
-
-
+ 
+ 
 def planifica(text: str, poza: bytes | None = None, mime: str = "image/jpeg") -> dict:
     if activ():
         try:
@@ -221,3 +237,4 @@ def planifica(text: str, poza: bytes | None = None, mime: str = "image/jpeg") ->
                        "pret_min": d["pret_min"], "pret_max": d["pret_max"], "durata_min": d["durata_min"],
                        "materiale": d["materiale"]}],
             "sfat": d["sfat_siguranta"], "sursa": "reguli"}
+ 
