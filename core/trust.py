@@ -24,16 +24,36 @@ def nivel(scor: int) -> str:
     return "În creștere"
 
 
-def calculeaza(mester_id: int) -> dict:
-    m = db.q1("SELECT numar_verificat, sim_ok FROM utilizatori WHERE id = ?", (mester_id,)) or {}
+def _incarca_toti() -> dict:
+    """Datele pentru scorul TUTUROR meșterilor, în 6 cereri (nu 6 pentru fiecare meșter)."""
+    def grup(rows, cheie="mester_id"):
+        g = {}
+        for r in rows:
+            g.setdefault(r[cheie], []).append(r)
+        return g
+    return {
+        "m": {r["id"]: r for r in db.q("SELECT id, numar_verificat, sim_ok FROM utilizatori WHERE rol = 'mester'")},
+        "note": grup(db.q("SELECT mester_id, nota FROM feedback WHERE etapa = 'final' AND nota IS NOT NULL")),
+        "durab": grup(db.q("SELECT mester_id, etapa, ok FROM feedback WHERE etapa IN ('zi1','sapt1','luna1') "
+                           "AND ok IS NOT NULL")),
+        "prog": grup(db.q("SELECT mester_id, status, sosit_la, punctual, anulat_motiv FROM lucrari "
+                          "WHERE programat_la IS NOT NULL AND mester_id IS NOT NULL")),
+        "fin": {r["mester_id"]: r["n"] for r in db.q("SELECT mester_id, COUNT(*) AS n FROM lucrari "
+                                                      "WHERE status = 'finalizata' GROUP BY mester_id")},
+        "recl": {r["vizat_id"]: r["n"] for r in db.q("SELECT vizat_id, COUNT(*) AS n FROM rapoarte "
+                                                      "WHERE status = 'confirmat' GROUP BY vizat_id")},
+    }
 
-    note = db.q("SELECT nota FROM feedback WHERE mester_id = ? AND etapa = 'final' AND nota IS NOT NULL", (mester_id,))
-    durab = db.q("SELECT etapa, ok FROM feedback WHERE mester_id = ? AND etapa IN ('zi1','sapt1','luna1') "
-                 "AND ok IS NOT NULL", (mester_id,))
-    programate = db.q("SELECT status, sosit_la, punctual, anulat_motiv FROM lucrari WHERE mester_id = ? "
-                      "AND programat_la IS NOT NULL", (mester_id,))
-    finalizate = db.val("SELECT COUNT(*) FROM lucrari WHERE mester_id = ? AND status = 'finalizata'", (mester_id,), 0)
-    reclamatii = db.val("SELECT COUNT(*) FROM rapoarte WHERE vizat_id = ? AND status = 'confirmat'", (mester_id,), 0)
+
+def calculeaza(mester_id: int) -> dict:
+    d = db._citeste(("trust_toti",), _incarca_toti)   # ținut minte până la prima modificare din aplicație
+    m = d["m"].get(mester_id) or {}
+
+    note = d["note"].get(mester_id, [])
+    durab = d["durab"].get(mester_id, [])
+    programate = d["prog"].get(mester_id, [])
+    finalizate = d["fin"].get(mester_id, 0) or 0
+    reclamatii = d["recl"].get(mester_id, 0) or 0
 
     factori = []
 

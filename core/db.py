@@ -1,16 +1,16 @@
 """Baza de date și câteva funcții scurte pentru interogări.
- 
+
 Merge pe două motoare, ales automat din .env:
     - fără DATABASE_URL: SQLite, un fișier local (data/skillio.db). Bun pentru demo și lucru pe laptop.
     - cu DATABASE_URL=postgresql://...: PostgreSQL (de ex. Tiger Data). Bun pentru producție.
 Codul aplicației scrie SQL o singură dată, cu semnul ? pentru parametri; aici se traduce pentru PostgreSQL.
- 
- 
+
+
     q(sql, params)   -> listă de dicționare
     q1(sql, params)  -> un dicționar sau None
     val(sql, params) -> o singură valoare
     ex(sql, params)  -> execută o modificare și întoarce id-ul rândului nou
- 
+
 Fiecare modificare crește un contor („versiune”). Aplicația se uită la el din
 2 în 2 secunde și se reîmprospătează singură când se schimbă ceva, așa că
 telefonul clientului și cel al meșterului rămân sincronizate.
@@ -19,11 +19,12 @@ import atexit
 import re
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from decimal import Decimal
- 
+
 from . import config
- 
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS utilizatori (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,9 +161,9 @@ CREATE INDEX IF NOT EXISTS i_lucrari_mester ON lucrari(mester_id);
 CREATE INDEX IF NOT EXISTS i_feedback_mester ON feedback(mester_id);
 CREATE INDEX IF NOT EXISTS i_mesaje_lucrare ON mesaje(lucrare_id);
 """
- 
- 
- 
+
+
+
 PG = bool(config.DATABASE_URL)
 # tabelele care au coloană „id” (la INSERT întoarcem id-ul rândului nou)
 _CU_ID = {"utilizatori", "portofoliu", "lucrari", "oferte", "plati", "extra", "mesaje", "feedback", "rapoarte",
@@ -173,13 +174,13 @@ _COLOANE_NOI = [("utilizatori", "email", "TEXT"), ("utilizatori", "auth_sub", "T
                 ("utilizatori", "sol_wallet", "TEXT"),             # adresa Solana a meșterului (opțional)
                 ("plati", "lamports", "INTEGER"), ("plati", "tx_lock", "TEXT"), ("plati", "tx_final", "TEXT"),
                 ("lucrari", "pasaport", "TEXT"), ("lucrari", "tx_pasaport", "TEXT")]
- 
- 
+
+
 def _schema_pg():
     s = SCHEMA.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY").replace(" REAL", " DOUBLE PRECISION")
     return re.sub(r"--[^\n]*", "", s)
- 
- 
+
+
 def _sql_pg(sql):
     """Traduce SQL-ul scris pentru SQLite în dialectul PostgreSQL."""
     sql = sql.replace("%", "%%").replace("?", "%s")
@@ -190,36 +191,36 @@ def _sql_pg(sql):
     if m and m.group(1) in _CU_ID and "RETURNING" not in sql.upper():
         sql += " RETURNING id"
     return sql
- 
- 
+
+
 def _param(v):
     return int(v) if isinstance(v, bool) else v
- 
- 
+
+
 def _rand(d):
     return {k: float(v) if isinstance(v, Decimal) else v for k, v in d.items()}
- 
- 
+
+
 class _Cursor:
     def __init__(self, cur, lastrowid=None):
         self._cur, self.lastrowid = cur, lastrowid
- 
+
     def fetchall(self):
         return [_rand(dict(r)) for r in self._cur.fetchall()] if self._cur.description else []
- 
+
     def fetchone(self):
         if not self._cur.description:
             return None
         r = self._cur.fetchone()
         return tuple(_rand(dict(r)).values()) if (PG and r is not None) else r
- 
- 
+
+
 class _Conexiune:
     """Aceeași interfață (execute → cursor cu fetchall/fetchone/lastrowid) pentru ambele motoare."""
- 
+
     def __init__(self, raw):
         self.raw = raw
- 
+
     def execute(self, sql, p=()):
         p = tuple(_param(x) for x in p)
         if not PG:
@@ -232,12 +233,12 @@ class _Conexiune:
             r = cur.fetchone()
             last = r["id"] if r else None
         return _Cursor(cur, last)
- 
- 
+
+
 _pool = None
 _pool_lock = threading.Lock()
- 
- 
+
+
 def _pg_pool():
     global _pool
     with _pool_lock:
@@ -248,11 +249,11 @@ def _pg_pool():
                                    kwargs={"row_factory": dict_row, "autocommit": False})
             atexit.register(_pool.close)
         return _pool
- 
- 
+
+
 _local = threading.local()
- 
- 
+
+
 @contextmanager
 def o_tranzactie():
     """Tot ce rulează înăuntru folosește o singură conexiune și un singur commit.
@@ -266,8 +267,9 @@ def o_tranzactie():
             yield c
         finally:
             _local.c = None
- 
- 
+            _dupa_scriere()
+
+
 @contextmanager
 def conn():
     if getattr(_local, "c", None) is not None:      # deja într-o tranzacție: o refolosim
@@ -284,52 +286,132 @@ def conn():
         c.commit()
     finally:
         c.close()
- 
- 
-def q(sql, p=()):
-    with conn() as c:
+
+
+# --- cache pentru citiri ----------------------------------------------------------
+# Un ecran face zeci de citiri (de ex. Trust Score-ul fiecărui meșter). Pe o bază din cloud fiecare citire
+# înseamnă un drum prin internet, așa că le ținem minte până la prima modificare (orice ex() golește cache-ul).
+# Siguranță: o intrare expiră oricum după CACHE_SECUNDE, ca să prindem și scrierile făcute din alt proces.
+CACHE_SECUNDE = 20
+_cache: dict = {}
+_cache_lock = threading.Lock()
+
+
+def goleste_cache():
+    with _cache_lock:
+        _cache.clear()
+
+
+def _citeste(cheie, calculeaza):
+    if getattr(_local, "c", None) is not None:      # într-o tranzacție: citim direct
+        return calculeaza()
+    acum = time.monotonic()
+    with _cache_lock:
+        r = _cache.get(cheie)
+    if r is not None and acum - r[0] < CACHE_SECUNDE:
+        return r[1]
+    gen = _generatie
+    val_ = calculeaza()
+    with _cache_lock:
+        if gen == _generatie:                        # nicio scriere între timp
+            if len(_cache) > 5000:
+                _cache.clear()
+            _cache[cheie] = (acum, val_)
+    return val_
+
+
+_generatie = 0
+
+
+def _dupa_scriere():
+    global _generatie
+    with _cache_lock:
+        _generatie += 1
+        _cache.clear()
+
+
+@contextmanager
+def _conn_citire():
+    """Pentru citiri pe PostgreSQL: fără BEGIN/COMMIT, deci un singur drum prin rețea pe cerere."""
+    if not PG or getattr(_local, "c", None) is not None:
+        with conn() as c:
+            yield c
+        return
+    with _pg_pool().connection() as raw:
+        raw.autocommit = True
+        try:
+            yield _Conexiune(raw)
+        finally:
+            raw.autocommit = False
+
+
+def _q_direct(sql, p=()):
+    with _conn_citire() as c:
         return [dict(r) for r in c.execute(sql, p).fetchall()]
- 
- 
+
+
+def q(sql, p=()):
+    rows = _citeste(("q", sql, tuple(p)), lambda: _q_direct(sql, p))
+    return [dict(r) for r in rows]                   # copii, ca un ecran să nu strice cache-ul
+
+
 def q1(sql, p=()):
     r = q(sql, p)
     return r[0] if r else None
- 
- 
-def val(sql, p=(), implicit=None):
-    with conn() as c:
+
+
+def _val_direct(sql, p=()):
+    with _conn_citire() as c:
         r = c.execute(sql, p).fetchone()
-    return r[0] if r and r[0] is not None else implicit
- 
- 
+    return r[0] if r else None
+
+
+def val(sql, p=(), implicit=None):
+    r = _citeste(("v", sql, tuple(p)), lambda: _val_direct(sql, p))
+    return r if r is not None else implicit
+
+
 def ex(sql, p=()):
-    with conn() as c:
-        cur = c.execute(sql, p)
-        c.execute("UPDATE setari SET valoare = CAST(CAST(valoare AS INTEGER) + 1 AS TEXT) WHERE cheie = 'versiune'")
-        return cur.lastrowid
- 
- 
+    try:
+        with conn() as c:
+            cur = c.execute(sql, p)
+            c.execute("UPDATE setari SET valoare = CAST(CAST(valoare AS INTEGER) + 1 AS TEXT) WHERE cheie = 'versiune'")
+            return cur.lastrowid
+    finally:
+        _dupa_scriere()
+
+
 def versiune():
-    return int(val("SELECT valoare FROM setari WHERE cheie = 'versiune'", implicit=0))
- 
- 
+    """Citită mereu direct din bază (fără cache), ca telefoanele să afle de schimbările altora."""
+    global _ultima_versiune
+    v = _val_direct("SELECT valoare FROM setari WHERE cheie = 'versiune'")
+    v = int(v) if v is not None else 0
+    if v != _ultima_versiune:                        # a scris cineva (și din alt proces): golim cache-ul
+        _ultima_versiune = v
+        _dupa_scriere()
+    return v
+
+
+_ultima_versiune = None
+
+
 def setare(cheie, implicit=None):
     return val("SELECT valoare FROM setari WHERE cheie = ?", (cheie,), implicit)
- 
- 
+
+
 def pune_setare(cheie, valoare):
     ex("INSERT INTO setari(cheie, valoare) VALUES(?, ?) "
        "ON CONFLICT(cheie) DO UPDATE SET valoare = excluded.valoare", (cheie, str(valoare)))
- 
- 
+
+
 def _coloane(c, tabel):
     if PG:
         rows = c.execute("SELECT column_name AS name FROM information_schema.columns WHERE table_name = ?",
                          (tabel,)).fetchall()
         return {r["name"] for r in rows}
     return {r[1] for r in c.raw.execute(f"PRAGMA table_info({tabel})").fetchall()}
- 
- 
+
+
 def init():
     """Creează folderele și tabelele. La prima pornire pune și datele demo."""
     config.UPLOADS.mkdir(parents=True, exist_ok=True)
@@ -348,12 +430,12 @@ def init():
         from . import seed
         with o_tranzactie():
             seed.populeaza()
- 
- 
+
+
 TABELE = ("utilizatori", "sesiuni", "portofoliu", "lucrari", "invitatii", "oferte", "plati", "extra",
           "mesaje", "citit", "feedback", "rapoarte", "blocari", "notificari", "sondaj", "setari")
- 
- 
+
+
 def reseteaza():
     """Șterge tot și pune la loc datele demo (buton în panoul de admin)."""
     with conn() as c:
@@ -361,8 +443,8 @@ def reseteaza():
             if t not in ("setari", "sondaj"):     # răspunsurile oamenilor rămân și după resetarea demo-ului
                 c.execute(f"DELETE FROM {t}")
         c.execute("UPDATE setari SET valoare = '0' WHERE cheie = 'decalaj_zile'")
+    _dupa_scriere()
     from . import seed
     with o_tranzactie():
         seed.populeaza()
     ex("UPDATE setari SET valoare = valoare WHERE cheie = 'decalaj_zile'")
- 

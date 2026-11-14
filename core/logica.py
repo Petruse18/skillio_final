@@ -729,13 +729,25 @@ def necitite(lid, uid):
 
 
 def conversatii(uid):
-    """Lucrările care au chat: cele cu meșter ales sau la care meșterul a trimis ofertă."""
+    """Lucrările care au chat: cele cu meșter ales sau la care meșterul a trimis ofertă.
+    Ultimul mesaj și numărul de necitite vin din 2 cereri pentru toate lucrările (nu câte 3 pe lucrare)."""
     rows = db.q("SELECT * FROM lucrari WHERE (client_id = ? OR mester_id = ?) AND mester_id IS NOT NULL "
                 "ORDER BY id DESC", (uid, uid))
+    if not rows:
+        return rows
+    ids = [l["id"] for l in rows]
+    semne = ",".join("?" * len(ids))
+    ultimele = {m["lucrare_id"]: m for m in db.q(
+        f"SELECT * FROM mesaje WHERE id IN (SELECT MAX(id) FROM mesaje WHERE lucrare_id IN ({semne}) "
+        f"GROUP BY lucrare_id)", tuple(ids))}
+    necit = {r["lucrare_id"]: r["n"] for r in db.q(
+        f"SELECT m.lucrare_id, COUNT(*) AS n FROM mesaje m LEFT JOIN citit c "
+        f"ON c.lucrare_id = m.lucrare_id AND c.user_id = ? "
+        f"WHERE m.lucrare_id IN ({semne}) AND m.id > COALESCE(c.ultimul_id, 0) "
+        f"AND m.autor_id IS NOT NULL AND m.autor_id != ? GROUP BY m.lucrare_id", (uid, *ids, uid))}
     for l in rows:
-        ult = db.q1("SELECT * FROM mesaje WHERE lucrare_id = ? ORDER BY id DESC LIMIT 1", (l["id"],))
-        l["ultimul"] = ult
-        l["necitite"] = necitite(l["id"], uid)
+        l["ultimul"] = ultimele.get(l["id"])
+        l["necitite"] = necit.get(l["id"], 0)
         l["celalalt"] = user(l["mester_id"] if uid == l["client_id"] else l["client_id"])
     rows.sort(key=lambda l: l["ultimul"]["id"] if l["ultimul"] else 0, reverse=True)
     return rows
