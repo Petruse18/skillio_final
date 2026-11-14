@@ -2,7 +2,7 @@
 
 Pornire:   streamlit run app.py
 Telefon:   http://localhost:8501              (aplicația, în format de telefon)
-Prezentare: http://localhost:8501/?mod=prezentare   (client și meșter unul lângă altul)
+Prezenctare: http://localhost:8501/?mod=prezentare   (client și meșter unul lângă altul)
 """
 import streamlit as st
 
