@@ -1,56 +1,22 @@
-/* SKILLIO design tokens (direcția „Cartier”)
-   Folosește doar variabilele de aici în cod. Tema e întunecată mereu (vezi finalul fișierului);
-   valorile de mai jos sunt varianta deschisă. */
+/* SKILLIO design tokens: neutru, curat, un singur accent verde închis.
+   Folosește doar variabilele de aici în cod. */
 :root{
-  /* Culori de brand */
-  --sk-primary:#127a4e;        /* butoane principale, selecție, „în regulă” */
-  --sk-primary-press:#0d5f3c;  /* buton apăsat / hover */
-  --sk-primary-soft:#e3f4ea;   /* butoane secundare, avatare, fundaluri ușoare */
-  --sk-on-primary:#ffffff;     /* text pe verde */
-  --sk-leaf:#8ee0b0;           /* doar logo și ilustrații */
-
-  /* Suprafețe și text */
-  --sk-bg:#fbfcfa;             /* fundal ecran */
-  --sk-surface:#ffffff;        /* carduri, câmpuri */
-  --sk-surface-2:#f1f5f2;      /* zone liniștite, chips */
-  --sk-line:#e1e9e4;           /* margini, separatoare */
-  --sk-ink:#0f2a20;            /* text principal */
-  --sk-muted:#5b6b63;          /* text secundar */
-
-  /* Culori cu o singură treabă */
-  --sk-urgent:#c2410c;  --sk-urgent-fill:#ea580c;  --sk-urgent-soft:#ffe9df;   /* doar Urgent +15% */
-  --sk-trust:#2950b8;   --sk-trust-soft:#e4ecff;                              /* doar verificări Nokia */
-  --sk-escrow:#a15c07;  --sk-escrow-soft:#fdf1d8;                             /* bani blocați + stele */
-  --sk-danger:#c62828;  --sk-danger-soft:#fde7e7;                             /* erori, raportări */
-
-  /* Hartă */
-  --sk-map-land:#eef3ec; --sk-map-road:#ffffff; --sk-map-water:#bfe0ef; --sk-map-park:#d3ecd9;
-
-  /* Tipografie: Plus Jakarta Sans (Google Fonts) */
-  --sk-font:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --sk-fs-cap:12px; --sk-fs-label:13px; --sk-fs-body:15px; --sk-fs-card:17px; --sk-fs-price:20px; --sk-fs-title:24px; --sk-fs-hero:32px;
-  --sk-fw-regular:400; --sk-fw-medium:500; --sk-fw-bold:700; --sk-fw-heavy:800;
-
-  /* Spațiere (grilă de 4px) */
+  --sk-primary:#155e3b; --sk-primary-press:#0e4a2d; --sk-primary-soft:#e8f1ec; --sk-on-primary:#ffffff;
+  --sk-leaf:#5fd39a;
+  --sk-bg:#f4f4f1; --sk-surface:#ffffff; --sk-surface-2:#eeeeea; --sk-line:#e3e3dd;
+  --sk-ink:#121513; --sk-muted:#6a6f6b;
+  --sk-urgent:#b4410e; --sk-urgent-fill:#e2580f; --sk-urgent-soft:#fdeee5;
+  --sk-trust:#1f4fd1; --sk-trust-soft:#eaf0ff;
+  --sk-escrow:#8a5a0b; --sk-escrow-soft:#fbf3e2;
+  --sk-danger:#b42318; --sk-danger-soft:#fdecea;
+  --sk-map-land:#eef0ec; --sk-map-road:#ffffff; --sk-map-water:#cfe3ec; --sk-map-park:#dcebdf;
+  --sk-font:"Geist","Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --sk-mono:"Geist Mono",ui-monospace,monospace;
+  --sk-fs-cap:12.5px; --sk-fs-label:12px; --sk-fs-body:15px; --sk-fs-card:16px; --sk-fs-price:19px; --sk-fs-title:26px; --sk-fs-hero:34px;
+  --sk-fw-regular:400; --sk-fw-medium:500; --sk-fw-bold:600; --sk-fw-heavy:700;
   --sk-s1:4px; --sk-s2:8px; --sk-s3:12px; --sk-s4:16px; --sk-s5:24px; --sk-s6:32px;
-
-  /* Colțuri */
-  --sk-r-sm:10px; --sk-r-md:14px; --sk-r-lg:18px; --sk-r-pill:999px;
-
-  /* Umbre */
-  --sk-shadow:0 8px 22px -14px rgba(15,61,43,.45);
-
-  /* Dimensiuni */
-  --sk-tap:48px;          /* înălțime minimă buton */
-  --sk-icon:20px;         /* iconițe Lucide, contur 2px */
-  --sk-phone-w:390px;     /* lățime ecran telefon simulat */
+  --sk-r-sm:8px; --sk-r-md:12px; --sk-r-lg:16px; --sk-r-pill:999px;
+  --sk-shadow:0 1px 2px rgba(18,21,19,.05),0 0 0 1px rgba(18,21,19,.06);
+  --sk-tap:46px; --sk-icon:20px; --sk-phone-w:390px;
+  color-scheme:light;
 }
-/* Tema aplicației: întunecată, mereu (la fel ca Streamlit în .streamlit/config.toml).
-   Varianta deschisă rămâne cu data-theme="light" pe <html>. */
-:root:not([data-theme="light"]){
-  --sk-primary:#3fbf83; --sk-primary-press:#2fa36d; --sk-primary-soft:#173528; --sk-on-primary:#04140c;
-  --sk-bg:#0f1714; --sk-surface:#16211c; --sk-surface-2:#1d2a24; --sk-line:#273730; --sk-ink:#e6efe9; --sk-muted:#9db0a6;
-  --sk-urgent:#ff9a62; --sk-urgent-fill:#f97316; --sk-urgent-soft:#3a2216;
-  --sk-trust:#93b0ff; --sk-trust-soft:#1b2747; --sk-escrow:#f2bf5c; --sk-escrow-soft:#352712; --sk-danger:#ff8a80; --sk-danger-soft:#3a1a1a;
-  --sk-map-land:#17221d; --sk-map-road:#25332c; --sk-map-water:#1c3a4a; --sk-map-park:#1c3326;
-  --sk-shadow:0 8px 22px -14px rgba(0,0,0,.8); color-scheme:dark}

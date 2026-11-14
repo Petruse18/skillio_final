@@ -1,0 +1,47 @@
+/* Stratul final de design: tipografie strânsă, margini fine, fără gradiente. */
+.stApp{background:var(--sk-bg)!important}
+.sk-title{letter-spacing:-.025em;font-weight:700}
+.sk-h{letter-spacing:-.01em;font-weight:600}
+.sk-label{text-transform:uppercase;letter-spacing:.08em;font-size:11px;font-weight:600;color:var(--sk-muted)}
+.sk-price{font-family:var(--sk-mono);font-weight:600;letter-spacing:-.02em}
+.sk-badge{font-weight:500;border:1px solid var(--sk-line);background:var(--sk-surface)}
+[class*="st-key-card"],[class*="st-key-cardsel"],[class*="st-key-cardflat"],.sk-card{box-shadow:var(--sk-shadow)!important;border:0!important;border-radius:var(--sk-r-lg)!important}
+[class*="st-key-cardsel"]{box-shadow:0 0 0 1.5px var(--sk-ink)!important}
+.stButton>button,.stLinkButton>a{border-radius:10px!important;font-weight:600!important;letter-spacing:-.005em}
+.stButton>button[kind="primary"],.stLinkButton>a[kind="primary"]{background:var(--sk-ink)!important;border-color:var(--sk-ink)!important;color:#fff!important}
+.stButton>button[kind="primary"]:hover{background:#2a2f2c!important}
+.st-key-nav{background:rgba(255,255,255,.92)!important;backdrop-filter:blur(12px);border-top:1px solid var(--sk-line)!important;box-shadow:none!important}
+.st-key-nav .stButton>button[kind="primary"]{background:transparent!important;color:var(--sk-ink)!important;border:0!important}
+.st-key-nav .stButton>button[kind="primary"] span[data-testid="stIconMaterial"]{color:var(--sk-ink)!important}
+/* promisiunea */
+.sk-promise{background:var(--sk-ink);color:#fff;border-radius:var(--sk-r-lg);padding:18px 18px 16px}
+.sk-promise-t{font-size:22px;font-weight:700;letter-spacing:-.025em;margin-bottom:10px}
+.sk-promise-l{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px}
+.sk-promise-l span{font-size:12.5px;line-height:1.35;color:#c9cfcb;padding-left:14px;position:relative}
+.sk-promise-l span:before{content:"";position:absolute;left:0;top:6px;width:6px;height:6px;border-radius:2px;background:var(--sk-leaf)}
+/* garanții la plată */
+.sk-guar{display:flex;flex-direction:column;gap:10px;margin-top:10px;padding-top:12px;border-top:1px solid var(--sk-line)}
+.sk-guar>div{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.4;color:var(--sk-muted)}
+.sk-guar b{color:var(--sk-ink);font-weight:600}
+.sk-guar svg{flex:none;margin-top:1px;color:var(--sk-primary)}
+/* verdict AI la reconfirmare */
+.sk-verdict{border-radius:var(--sk-r-md);padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:13.5px;line-height:1.45}
+.sk-verdict.ok{background:var(--sk-primary-soft);color:var(--sk-primary)}
+.sk-verdict.warn{background:var(--sk-escrow-soft);color:var(--sk-escrow)}
+.sk-verdict.danger{background:var(--sk-danger-soft);color:var(--sk-danger)}
+.sk-verdict>div:nth-child(2){color:var(--sk-ink)}
+/* bara de 24 h */
+.sk-bar{height:6px;border-radius:99px;background:var(--sk-surface-2);overflow:hidden;margin-top:10px}
+.sk-bar span{display:block;height:100%;background:var(--sk-ink);border-radius:99px}
+/* etapele agentului */
+.sk-steps{display:flex;flex-direction:column;background:var(--sk-surface);border-radius:var(--sk-r-lg);box-shadow:var(--sk-shadow)}
+.sk-step{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--sk-line)}
+.sk-step:last-child{border-bottom:0}
+.sk-step-n{flex:none;width:24px;height:24px;border-radius:7px;background:var(--sk-ink);color:#fff;font-size:12px;font-weight:600;display:grid;place-items:center;font-family:var(--sk-mono)}
+/* SOS */
+.sk-sos-dot{flex:none;width:12px;height:12px;border-radius:99px;background:#e5484d;box-shadow:0 0 0 5px rgba(229,72,77,.15);animation:skp 1.6s infinite}
+@keyframes skp{50%{box-shadow:0 0 0 9px rgba(229,72,77,0)}}
+.sk-call{display:flex;align-items:center;gap:12px;background:var(--sk-ink);color:#fff;border-radius:var(--sk-r-lg);padding:16px}
+.sk-call .sk-cap{color:#b9c0bb}
+.sk-call-av{width:48px;height:48px;border-radius:14px;background:#2a2f2c;display:grid;place-items:center;font-weight:600}
+.sk-rec{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.08em;color:#ff6b6f;font-family:var(--sk-mono)}

@@ -24,16 +24,19 @@ def _actiune(fn, *a, ok=None, **kw):
 
 def _cronologie(l):
     s = l["status"]
-    ordine = ["deschisa", "acceptata", "de_plata", "programata", "sosit", "gata", "finalizata"]
-    idx = ordine.index(s) if s in ordine else (5 if s == "disputa" else -1)
+    ordine = ["deschisa", "acceptata", "de_plata", "programata", "sosit", "in_lucru", "gata", "confirmata", "finalizata"]
+    s = {"reconfirmare": "sosit"}.get(s, s)
+    idx = ordine.index(s) if s in ordine else (6 if s == "disputa" else -1)
     pasi = [
         ("Solicitare trimisă", timp.de_cand(l["creat_la"])),
         ("Ofertă aleasă", ""),
         ("Ora stabilită", timp.data_ora(l["programat_la"]) if l["programat_la"] else ""),
         ("Plătit, bani blocați", ""),
-        ("Sosire confirmată de rețea", timp.ora(l["sosit_la"]) if l["sosit_la"] else ""),
+        ("Meșterul a ajuns", timp.ora(l["sosit_la"]) if l["sosit_la"] else ""),
+        ("Preț reconfirmat cu poză", ""),
         ("Lucrare gata", timp.ora(l["gata_la"]) if l["gata_la"] else ""),
-        ("Confirmată, bani eliberați", ""),
+        ("Confirmată de ambii", timp.data_ora(l["confirmat_la"]) if l["confirmat_la"] else ""),
+        (f"Bani eliberați după {config.FEREASTRA_DISPUTA_ORE} h", ""),
     ]
     lst = []
     for i, (t, d) in enumerate(pasi):
@@ -50,13 +53,13 @@ def _detalii(l, eu_sunt_mester):
         c.poza(l["poza"], 180)
     urg = c.badge_urgent() if l["urgent"] else ""
     buget = f'<span class="sk-badge">Buget ~{l["buget"]} lei</span>' if l["buget"] else ""
-    c.h(f'<div class="sk-badges"><span class="sk-badge">{config.MESERII[l["meserie"]]["emoji"]} '
+    c.h(f'<div class="sk-badges"><span class="sk-badge">'
         f'{c.meserie_nume(l["meserie"])}</span>{urg}{buget}</div><div class="sk-b">{c.esc(l["descriere"])}</div>'
         f'<div class="sk-cap">{c.ico("pin", 12)} {c.esc(l["adresa"] if (not eu_sunt_mester or l["mester_id"]) else l["cartier"])}'
         f' · {c.esc(l["cartier"])}</div>')
     if d:
         mat = ", ".join(d.get("materiale", []))
-        c.alerta(f'<b>Asistent AI:</b> {d.get("pret_min")}–{d.get("pret_max")} lei orientativ, ~{d.get("durata_min")} '
+        c.alerta(f'<b>Estimare AI:</b> {d.get("pret_min")}–{d.get("pret_max")} lei orientativ, ~{d.get("durata_min")} '
                  f'min. {"De adus: " + c.esc(mat) + "." if mat else ""}', "ai", "sparkles")
 
 
@@ -100,7 +103,7 @@ def _blockchain(l):
             rand.append((f'Blocat: {c.lei(p["suma"])} ({p["tip"]})', p["tx_lock"]))
     finale = {p["tx_final"]: p["status"] for p in plati if p.get("tx_final")}
     for sig, stare in finale.items():
-        rand.append(("Eliberat către meșter (90%) și SKILLIO (10%)" if stare == "eliberat" else "Returnat clientului",
+        rand.append(("Eliberat către meșter" if stare == "eliberat" else "Returnat clientului",
                      sig))
     if not rand and not l.get("pasaport"):
         return
@@ -129,8 +132,8 @@ def _client(u, l):
     if mester:
         with st.container(key="card_mesterul"):
             c.h(f'<div class="sk-row">{c.avatar(mester)}<div class="sk-grow"><div class="sk-h">{c.esc(mester["nume"])}'
-                f'</div><div class="sk-cap">Meșterul tău</div></div>{c.trust_pill(logica.trust.scor(mester["id"]))}'
-                f'</div>{c.insigne_nokia(mester, sosire=bool(l["sosit_la"]))}')
+                f'</div><div class="sk-cap">Meșterul tău · numărul rămâne ascuns</div></div>'
+                f'{c.trust_pill(logica.trust.scor(mester["id"]))}</div>')
             if st.button("Vezi profilul", key="link_prof_m", type="tertiary"):
                 c.go("mester", mester["id"])
 
@@ -164,7 +167,7 @@ def _client(u, l):
                     f'Trust {o["trust"]["scor"]} · {c.stele(o["trust"]["medie"])} {c.nota_txt(o["trust"]["medie"])} · '
                     f'{geo.km(o["dist"])}</div></div></div>'
                     f'<div class="sk-between"><span class="sk-b">{c.ico("cal", 14)} {timp.data_ora(o["propus_la"])}</span>'
-                    f'{rec}</div>{msg}{c.insigne_nokia(m)}')
+                    f'{rec}</div>{msg}')
                 with st.container(horizontal=True):
                     if st.button("Profil", key=f"of_prof{o['id']}", width="stretch"):
                         c.go("mester", m["id"])
@@ -187,19 +190,27 @@ def _client(u, l):
     elif s == "de_plata":
         o = logica.db.q1("SELECT * FROM oferte WHERE id = ?", (l["oferta_id"],))
         c.h('<div class="sk-title" style="font-size:20px">Plată</div>')
+        prot = logica.taxa_protectie(o["total"])
         rows = [("Ofertă meșter", c.lei(o["pret"]))]
         if l["urgent"]:
             rows.append((f"Urgent +{config.PCT_URGENT}", c.lei(o["total"] - o["pret"])))
+        rows.append((f"Taxă de protecție {config.PCT_PROTECTIE}", c.lei(prot)))
         rows.append(("Programare", timp.data_ora(l["programat_la"])))
-        rows.append(("Total de plată", c.lei(o["total"]), True))
+        rows.append(("Total de plată", c.lei(o["total"] + prot), True))
         with st.container(key="card_plata"):
             c.h(c.kv(rows))
-            c.alerta("<b>Banii rămân blocați în SKILLIO</b> până confirmi că lucrarea e în regulă. Dacă meșterul nu "
-                     "vine, îi primești înapoi.", "escrow", "lock")
-        if st.button(f"Plătește {c.lei(o['total'])}", type="primary", width="stretch", key="plateste",
+            c.h('<div class="sk-guar">'
+                f'<div>{c.ico("lock", 16)}<span><b>Banii stau blocați</b> până confirmați amândoi, plus '
+                f'{config.FEREASTRA_DISPUTA_ORE} h pentru dispută.</span></div>'
+                f'<div>{c.ico("check", 16)}<span><b>Prețul se reconfirmă la fața locului</b>, cu poză. Dacă refuzi, '
+                f'plătești doar deplasarea ({c.lei(config.TAXA_DEPLASARE)}).</span></div>'
+                f'<div>{c.ico("info", 16)}<span><b>Taxa de protecție</b> plătește mediatorii umani care rezolvă '
+                f'orice dispută. Nu decide un robot.</span></div></div>')
+        if st.button(f"Plătește {c.lei(o['total'] + prot)}", type="primary", width="stretch", key="plateste",
                      icon=":material/lock:"):
             _actiune(logica.plateste, l["id"], u["id"], ok="Plată efectuată. Banii sunt blocați până la final.")
-        st.caption("Plată simulată pentru prezentare.")
+        st.caption("Demo: plata e simulată și blocată pe Solana devnet. În producție: procesator autorizat "
+                   "(Stripe Connect / Mangopay).")
 
     elif s == "programata":
         c.alerta(f'<b>{timp.data_ora(l["programat_la"])}</b> · {c.lei(bani["blocat"])} blocați în SKILLIO până '
@@ -207,59 +218,59 @@ def _client(u, l):
         harta.harta_traseu((mester["lat"], mester["lon"]), (l["lat"], l["lon"]), key="tr_cl", inaltime=180)
         dist = geo.distanta_km(mester["lat"], mester["lon"], l["lat"], l["lon"])
         st.caption(f"Meșterul pornește din {mester['cartier']} ({geo.km(dist)}, ~{geo.minute_drum(dist)} min). "
-                   f"Când ajunge, rețeaua confirmă sosirea.")
+                   f"Când ajunge, îți reconfirmă prețul cu o poză.")
         if timp.acum() >= timp.din_iso(l["programat_la"]) + timedelta(hours=1):
             if st.button("Meșterul nu a venit, vreau banii înapoi", key="danger_noshow"):
                 _actiune(logica.nu_a_venit, l["id"], u["id"], ok="Am returnat banii. Ne pare rău!")
         if st.button("Anulează programarea (primești banii înapoi)", key="danger_anul2"):
             _actiune(logica.anuleaza_lucrare, l["id"], u["id"], ok="Programare anulată, banii s-au întors.")
 
-    elif s in ("sosit", "gata"):
-        mod = "rețeaua Nokia" if l["sosire_mod"] == "live" else "rețea (simulare)"
-        c.alerta(f'<b>{c.esc(mester["nume"])} a ajuns la {timp.ora(l["sosit_la"])}</b>. Sosire confirmată de {mod}'
-                 f'{", la timp" if l["punctual"] else ", cu întârziere"}.', "trust", "pin")
-        for e in logica.extra_lucrare(l["id"]):
-            if e["status"] == "trimisa":
-                with st.container(key=f"cardsel_extra{e['id']}"):
-                    c.h(f'<div class="sk-h">Lucrare în plus: {c.lei(e["suma"])}</div><div class="sk-b">{c.esc(e["motiv"])}'
-                        f'</div><div class="sk-cap">Dacă accepți, suma se plătește și rămâne blocată ca restul.</div>')
-                    with st.container(horizontal=True):
-                        if st.button("Refuz", key=f"ex_no{e['id']}", width="stretch"):
-                            _actiune(logica.raspunde_extra, e["id"], u["id"], False, ok="Ai refuzat lucrarea în plus.")
-                        if st.button(f"Accept și plătesc {c.lei(e['suma'])}", type="primary", key=f"ex_ok{e['id']}",
-                                     width="stretch"):
-                            _actiune(logica.raspunde_extra, e["id"], u["id"], True, ok="Lucrare în plus acceptată.")
+    elif s in ("sosit", "reconfirmare", "in_lucru", "gata", "confirmata"):
+        c.alerta(f'<b>{c.esc(mester["nume"])} a ajuns la {timp.ora(l["sosit_la"])}</b>'
+                 f'{", la timp" if l["punctual"] else ", cu întârziere"}. {c.lei(bani["blocat"])} blocați.', "trust", "pin")
         if s == "sosit":
+            c.h('<div class="sk-b">Meșterul se uită la problemă și îți trimite prețul reconfirmat, cu poză.</div>')
+        elif s == "reconfirmare":
+            _card_reconfirmare(u, l)
+        elif s == "in_lucru":
+            for e in logica.extra_lucrare(l["id"]):
+                if e["status"] == "trimisa":
+                    with st.container(key=f"cardsel_extra{e['id']}"):
+                        c.h(f'<div class="sk-h">Lucrare în plus: {c.lei(e["suma"])}</div><div class="sk-b">'
+                            f'{c.esc(e["motiv"])}</div><div class="sk-cap">Dacă accepți, suma se blochează ca restul.</div>')
+                        with st.container(horizontal=True):
+                            if st.button("Refuz", key=f"ex_no{e['id']}", width="stretch"):
+                                _actiune(logica.raspunde_extra, e["id"], u["id"], False, ok="Ai refuzat.")
+                            if st.button(f"Accept {c.lei(e['suma'])}", type="primary", key=f"ex_ok{e['id']}",
+                                         width="stretch"):
+                                _actiune(logica.raspunde_extra, e["id"], u["id"], True, ok="Lucrare în plus acceptată.")
             c.h('<div class="sk-b">Meșterul lucrează. Când termină, îți cerem confirmarea.</div>')
-        else:
+        elif s == "gata":
             c.h('<div class="sk-title" style="font-size:20px">Verifică lucrarea</div>')
             if l["nota_mester"]:
                 c.h(f'<div class="sk-b">Meșterul: „{c.esc(l["nota_mester"])}”</div>')
             if l["poza_dupa"]:
                 c.poza(l["poza_dupa"], 180)
-            rows = [(("Ofertă" if p["tip"] == "oferta" else "Lucrare în plus"), c.lei(p["suma"]))
-                    for p in bani["rows"] if p["status"] == "blocat"]
-            rows.append(("Merge la meșter", c.lei(bani["blocat"]), True))
             with st.container(key="card_confirm"):
-                c.h(c.kv(rows))
+                c.h(c.kv([("Blocat în SKILLIO", c.lei(bani["blocat"]), True)]))
                 ok = st.checkbox("Am verificat, totul e în regulă", key="conf_ok")
-                if st.button(f"Eliberează {c.lei(bani['blocat'])} către {mester['nume'].split()[0]}", type="primary",
-                             width="stretch", key="elibereaza", disabled=not ok):
-                    _actiune(logica.confirma_lucrare, l["id"], u["id"], ok="Gata! Meșterul și-a primit banii.")
-        with st.expander("Nu e în regulă, raportez"):
-            st.caption("Banii rămân blocați până verifică echipa SKILLIO.")
-            motiv = st.selectbox("Motiv", config.MOTIVE_RAPORT_CLIENT, key="disp_motiv")
-            det = st.text_area("Ce nu e în regulă?", key="disp_det", height=80)
-            if st.button("Trimite raportul", key="danger_disp"):
-                _actiune(logica.raporteaza, l["id"], u["id"], l["mester_id"], motiv, det,
-                         ok="Raport trimis. Banii rămân blocați până la verificare.")
+                if st.button("Confirm lucrarea", type="primary", width="stretch", key="elibereaza", disabled=not ok):
+                    _actiune(logica.confirma_lucrare, l["id"], u["id"],
+                             ok=f"Confirmat. Banii pleacă la meșter în {config.FEREASTRA_DISPUTA_ORE} h.")
+                st.caption(f"După confirmare, banii mai stau blocați {config.FEREASTRA_DISPUTA_ORE} de ore. Dacă "
+                           f"observi o problemă, poți deschide o dispută.")
+        else:
+            _card_fereastra(l, bani)
+            _recenzie_si_durabilitate(u, l)
+        _form_disputa(u, l, l["mester_id"], config.MOTIVE_RAPORT_CLIENT)
 
     elif s == "finalizata":
         c.alerta(f'Lucrare confirmată. {c.lei(bani["eliberat"])} au ajuns la meșter.', "ai", "check")
         _recenzie_si_durabilitate(u, l)
 
     elif s == "disputa":
-        c.alerta("Ai raportat o problemă. Echipa SKILLIO verifică, iar banii rămân blocați până atunci.", "escrow", "lock")
+        c.alerta("Dispută deschisă. Un mediator uman din echipa SKILLIO verifică și vă contactează. Banii rămân "
+                 "blocați până decide.", "escrow", "lock")
 
     elif s == "anulata":
         c.alerta(f'Lucrare anulată: {c.esc(l["anulat_motiv"] or "")}.'
@@ -272,6 +283,53 @@ def _client(u, l):
         with st.expander("Raportează o problemă cu meșterul"):
             from views.comun import _form_raport
             _form_raport(u, l["id"], mester["id"], config.MOTIVE_RAPORT_CLIENT, "rp_l")
+
+
+def _card_fereastra(l, bani):
+    pana = timp.din_iso(l["confirmat_la"]) + timedelta(hours=config.FEREASTRA_DISPUTA_ORE)
+    ramas = max(0, (pana - timp.acum()).total_seconds() / 3600)
+    pct = min(100, max(0, 100 - ramas / config.FEREASTRA_DISPUTA_ORE * 100))
+    c.h(f'<div class="sk-card flat"><div class="sk-between"><b class="sk-h">Confirmată de ambii</b>'
+        f'<span class="sk-price">{c.lei(bani["blocat"])}</span></div><div class="sk-cap">Banii pleacă la meșter pe '
+        f'<b>{timp.data_ora(pana)}</b> (mai sunt ~{ramas:.0f} h) dacă nimeni nu deschide o dispută.</div>'
+        f'<div class="sk-bar"><span style="width:{pct:.0f}%"></span></div></div>')
+
+
+def _card_reconfirmare(u, l):
+    r = logica.reconfirmare(l)
+    a = r.get("ai", {})
+    dif = r["pret"] - r["vechi"]
+    ton = {"rezonabil": ("ok", "Preț rezonabil"), "de_discutat": ("warn", "De discutat"),
+           "ridicat": ("danger", "Peste piață")}.get(a.get("verdict"), ("warn", "De discutat"))
+    with st.container(key="cardsel_reconf"):
+        c.h(f'<div class="sk-label">Preț reconfirmat la fața locului</div><div class="sk-between"><span class="sk-price" '
+            f'style="font-size:28px">{c.lei(r["pret"])}</span><span class="sk-cap">ofertă: {c.lei(r["vechi"])}'
+            f'{f" · {chr(43) if dif > 0 else chr(8722)}{c.lei(abs(dif))}" if dif else ""}</span></div>'
+            f'<div class="sk-b">„{c.esc(r["motiv"])}”</div>')
+        if r.get("poza"):
+            c.poza(r["poza"], 170)
+        c.h(f'<div class="sk-verdict {ton[0]}"><div class="sk-between"><b>{ton[1]}</b><span>{a.get("interval_min")}–'
+            f'{a.get("interval_max")} lei e normal</span></div><div>{c.esc(a.get("explicatie", ""))}</div>'
+            f'<div class="sk-cap">Părerea AI e doar un sfat. Decizia e a ta.</div></div>')
+        with st.container(horizontal=True):
+            if st.button(f"Refuz · plătesc doar {c.lei(config.TAXA_DEPLASARE)}", key="rc_no", width="stretch"):
+                _actiune(logica.raspunde_reconfirmare, l["id"], u["id"], False,
+                         ok="Ai refuzat. Ai plătit doar deplasarea, restul s-a întors.")
+            if st.button(f"Accept {c.lei(r['pret'])}", type="primary", key="rc_ok", width="stretch"):
+                _actiune(logica.raspunde_reconfirmare, l["id"], u["id"], True, ok="Preț acceptat. Meșterul începe.")
+
+
+def _form_disputa(u, l, vizat, motive):
+    if l["status"] not in logica.IN_CURS:
+        return
+    with st.expander("Ceva nu e în regulă? Deschide o dispută"):
+        st.caption("Banii rămân blocați. Un mediator uman din echipa SKILLIO vede pozele, chatul și cronologia, "
+                   "vă contactează pe amândoi și decide.")
+        motiv = st.selectbox("Motiv", motive, key="disp_motiv")
+        det = st.text_area("Ce s-a întâmplat?", key="disp_det", height=80)
+        if st.button("Deschide disputa", key="danger_disp"):
+            _actiune(logica.raporteaza, l["id"], u["id"], vizat, motiv, det,
+                     ok="Dispută deschisă. Un mediator te contactează.")
 
 
 def _alege_alta_ora(u, l, ca_mester=False):
@@ -340,7 +398,7 @@ def _mester(u, l):
         _detalii(l, True)
         c.h(f'<div class="sk-row">{c.avatar(client)}<div class="sk-grow"><b class="sk-b">{c.esc(client["nume"])}</b>'
             f'<div class="sk-cap">{c.esc(l["cartier"])} · {geo.km(dist)} de tine</div></div></div>'
-            f'{c.insigne_nokia(client)}')
+            '')
         nr = logica.db.val("SELECT COUNT(*) FROM oferte WHERE lucrare_id = ? AND status = 'trimisa' AND mester_id != ?",
                            (l["id"], u["id"]), 0)
         st.caption(f"{nr} alți meșteri au trimis deja oferte." if nr else "Ești printre primii. Trimite o ofertă.")
@@ -413,18 +471,36 @@ def _mester(u, l):
         if st.button("Am ajuns", type="primary", width="stretch", key="am_ajuns", icon=":material/where_to_vote:"):
             try:
                 mod, punctual = logica.am_ajuns(l["id"], u["id"])
-                c.toast(f"Sosire confirmată de {c.sursa_api(mod)}" + ("." if punctual else " (cu întârziere)."))
+                c.toast("Sosire înregistrată. Reconfirmă prețul." if punctual else "Sosire înregistrată (cu întârziere).")
                 st.rerun()
             except Eroare as e:
                 st.error(str(e))
-        st.caption("Rețeaua mobilă verifică dacă telefonul tău e la adresa clientului (Nokia Device Location).")
+        st.caption("Când ajungi, apasă „Am ajuns”, apoi reconfirmă prețul cu o poză.")
         if st.button("Anulează programarea", key="danger_m_anul"):
             _actiune(logica.anuleaza_lucrare, l["id"], u["id"], "Anulată de meșter",
                      ok="Programare anulată. Contează la „programări respectate”.")
 
     elif s == "sosit":
-        c.alerta(f'Sosire confirmată la {timp.ora(l["sosit_la"])}'
-                 f'{" (la timp)" if l["punctual"] else " (cu întârziere)"}.', "trust", "pin")
+        with st.container(key="card_reconf_m"):
+            c.h(f'<div class="sk-h">Reconfirmă prețul</div><div class="sk-cap">Ai văzut problema de aproape. Pune o '
+                f'poză și spune clientului de ce prețul rămâne sau se schimbă. Dacă refuză, primești deplasarea '
+                f'({c.lei(config.TAXA_DEPLASARE)}).</div>')
+            vechi = logica.pret_curent(l["id"])
+            pret = st.number_input("Prețul final (lei)", 10, 50000, int(vechi), step=10, key="rc_pret")
+            motiv = st.text_input("Motiv", key="rc_motiv", placeholder="Ex: Racordul e ruginit, trebuie schimbat tot.")
+            poza = st.file_uploader("Poză cu problema", type=["jpg", "jpeg", "png"], key="rc_poza")
+            if st.button("Trimite clientului", type="primary", width="stretch", key="rc_send"):
+                with st.spinner("Verificăm prețul..."):
+                    _actiune(logica.reconfirma_pret, l["id"], u["id"], pret, motiv,
+                             logica.salveaza_poza(poza, "reconf") if poza else None,
+                             poza.getvalue() if poza else None, poza.type if poza else "image/jpeg",
+                             ok="Prețul a fost trimis clientului.")
+
+    elif s == "reconfirmare":
+        r = logica.reconfirmare(l)
+        c.alerta(f'Ai trimis <b>{c.lei(r.get("pret", 0))}</b>. Așteptăm răspunsul clientului.', "ai", "clock")
+
+    elif s == "in_lucru":
         with st.expander("A apărut ceva în plus? Trimite o ofertă nouă"):
             suma = st.number_input("Suma în plus (lei)", 10, 10000, 50, step=10, key="ex_suma")
             motiv = st.text_input("Ce trebuie făcut în plus", key="ex_motiv")
@@ -444,8 +520,11 @@ def _mester(u, l):
                          ok="Am cerut confirmarea clientului.")
 
     elif s == "gata":
-        c.alerta(f'Așteptăm confirmarea clientului. Apoi primești {c.lei(bani["blocat"] * (1 - config.COMISION))} '
-                 f'(din {c.lei(bani["blocat"])}, minus {config.COMISION:.0%} comision).', "escrow", "lock")
+        c.alerta(f'Așteptăm confirmarea clientului. După confirmare, banii pleacă la tine în '
+                 f'{config.FEREASTRA_DISPUTA_ORE} h (minus {config.PCT_COMISION} comision).', "escrow", "lock")
+
+    elif s == "confirmata":
+        _card_fereastra(l, bani)
 
     elif s == "finalizata":
         net = bani["eliberat"] - bani["comision"]
@@ -461,12 +540,13 @@ def _mester(u, l):
                 f'{" · „" + c.esc(final["comentariu"]) + "”" if final["comentariu"] else ""}</div>')
 
     elif s == "disputa":
-        c.alerta("Clientul a raportat o problemă. Banii rămân blocați până decide echipa SKILLIO. Scrie-i în chat.",
-                 "escrow", "alert")
+        c.alerta("Dispută deschisă. Un mediator uman din echipa SKILLIO vă contactează pe amândoi. Banii rămân "
+                 "blocați până decide.", "escrow", "alert")
 
     elif s == "anulata":
         c.alerta(f'Lucrare anulată: {c.esc(l["anulat_motiv"] or "")}.', "escrow", "info")
 
+    _form_disputa(u, l, client["id"], config.MOTIVE_RAPORT_MESTER)
     with st.expander("Detaliile lucrării"):
         _detalii(l, True)
     if s not in ("anulata",):

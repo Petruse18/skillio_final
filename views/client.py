@@ -43,14 +43,24 @@ def acasa(u):
         if st.button("Deschide lucrarea", key="link_hero", type="tertiary"):
             c.go("lucrare", l["id"])
 
-    # Asistentul AI: cel mai rapid drum spre o solicitare
+    # Promisiunea: clientul nu riscă nimic
+    c.h(f'<div class="sk-promise"><div class="sk-promise-t">Tu nu riști nimic.</div><div class="sk-promise-l">'
+        f'<span>Bani blocați până confirmați amândoi</span><span>Preț reconfirmat cu poză, la fața locului</span>'
+        f'<span>Mediator uman la orice dispută</span><span>Numărul tău rămâne privat</span></div></div>')
+
+    # Agentul clientului
     with st.container(key="card_ai"):
-        c.h(f'<div class="sk-row">{c.ico("sparkles", 22)}<div class="sk-grow"><div class="sk-h">Descrie problema</div>'
-            f'<div class="sk-cap">Asistentul AI îți spune ce meșter trebuie, cât de urgent e și cât ar costa.</div>'
-            f'</div></div>')
-        if st.button("Începe o solicitare", type="primary", width="stretch", key="home_ai"):
-            st.session_state.pop("mester_tinta", None)
-            c.go("solicitare")
+        c.h(f'<div class="sk-row">{c.ico("sparkles", 22)}<div class="sk-grow"><div class="sk-h">Agentul tău</div>'
+            f'<div class="sk-cap">Îi spui ce vrei. Îți explică, îți dă costul și organizează meșterii, etapă cu etapă.'
+            f'</div></div></div>')
+        with st.container(horizontal=True):
+            if st.button("Vorbește cu agentul", type="primary", width="stretch", key="home_ai"):
+                c.go("asistent")
+            if st.button("Cerere rapidă", width="stretch", key="home_cerere"):
+                st.session_state.pop("mester_tinta", None)
+                c.go("solicitare")
+    from views import sos
+    sos.card_acasa(u)
 
     # Feedback scadent: lucrarea mai ține?
     for f in logica.feedback_de_dat(u["id"]):
@@ -65,7 +75,7 @@ def acasa(u):
         with st.container(horizontal=True, gap="small", key=f"cats{i}", wrap=False):
             for k in rand:
                 m = config.MESERII[k]
-                if st.button(m["scurt"], icon=m["emoji"], key=f"cat_{k}", width="stretch"):
+                if st.button(m["scurt"], icon=f":material/{m['icon']}:", key=f"cat_{k}", width="stretch"):
                     st.session_state["f_meserie"] = k
                     st.session_state["f_text"] = ""
                     c.go("cauta")
@@ -83,12 +93,6 @@ def acasa(u):
         c.h('<div class="sk-label">Meșteri recomandați pentru tine</div>')
         for m in recomandati:
             _card_mester(m, f"rec_{m['id']}")
-
-    c.h('<div class="sk-label">Disponibili în apropiere</div>')
-    aproape = [m for m in sorted(toti, key=lambda m: m["dist"] or 99) if m["disponibil"]][:8]
-    ales = harta.harta_mesteri(aproape, u["lat"], u["lon"], key="home_map", inaltime=230)
-    if ales:
-        c.go("mester", ales)
 
     top = sorted(toti, key=lambda m: -m["trust"]["scor"])[:4]
     c.h('<div class="sk-label">Cele mai bine evaluați</div>')
@@ -173,8 +177,7 @@ def cauta(u):
                          pret_max=st_.get("f_pret", 150) if st_.get("f_pret", 150) < 150 else None,
                          exp_min=st_.get("f_exp", 0), rating_min=st_.get("f_rating", 0), text=txt,
                          sortare=st_.get("f_sort", "potrivire"))
-    vedere = st.segmented_control("Vedere", ["Listă", "Hartă"], default="Listă", key="f_vedere",
-                                  label_visibility="collapsed", width="stretch")
+    vedere = "Listă"
     st.caption(f"{len(rez)} meșteri găsiți")
     if not rez:
         c.gol("Niciun meșter nu se potrivește filtrelor. Mărește distanța sau scoate filtrul „Doar disponibili”.")

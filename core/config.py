@@ -20,7 +20,12 @@ UPLOADS = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "skillio.db"
 
 # --- reguli de business ------------------------------------------------------
-COMISION = 0.10            # platforma reține 10% din fiecare lucrare finalizată
+COMISION = 0.10            # platforma reține 10% din partea meșterului
+TAXA_PROTECTIE = 0.05      # clientul plătește 5% în plus: finanțează mediatorii umani (ca o asigurare)
+TAXA_DEPLASARE = 40        # lei din ofertă garantați meșterului dacă clientul refuză prețul la fața locului
+FEREASTRA_DISPUTA_ORE = 24 # după confirmare, banii mai stau blocați atâtea ore (oricine poate deschide dispută)
+SOS_PRET = 45              # apel video de urgență cu un meșter
+SOS_MESTER = 35            # din care merg la meșter
 SPOR_URGENT = 0.15         # lucrările urgente costă cu 15% mai mult
 SLOTURI = [8, 10, 12, 14, 16]   # ora de început a fiecărui interval de 2 ore
 DURATA_SLOT = 2
@@ -31,6 +36,7 @@ MAX_INVITATI = 6           # câți meșteri primesc o solicitare
 # procentele ca text, pentru ecrane (ex. „15%”). Se calculează singure din valorile de mai sus.
 PCT_URGENT = f"{round(SPOR_URGENT * 100)}%"
 PCT_COMISION = f"{round(COMISION * 100)}%"
+PCT_PROTECTIE = f"{round(TAXA_PROTECTIE * 100)}%"
 
 # --- chei API (din fișierul .env) -------------------------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
@@ -87,52 +93,52 @@ ELEVENLABS_MODEL = _env("ELEVENLABS_MODEL", "eleven_multilingual_v2")   # adresa
 # pret = interval orientativ (lei), folosit când Gemini nu e disponibil
 MESERII = {
     "instalator": {
-        "scurt": "Instalator", "nume": "Instalator", "icon": "plumbing", "emoji": "🚿", "pret": (120, 300), "durata": 60,
+        "scurt": "Instalator", "nume": "Instalator", "icon": "plumbing", "emoji": "", "pret": (120, 300), "durata": 60,
         "cuvinte": ["apă", "apa", "țeav", "teav", "chiuvet", "robinet", "curge", "wc", "toalet",
                     "scurger", "sifon", "infundat", "înfundat", "baterie", "duș", "dus", "cadă", "cada", "inunda"],
         "materiale": ["racord flexibil", "garnituri", "bandă teflon"],
         "sfat": "Închide robinetul de sub chiuvetă sau robinetul general și pune un prosop.",
     },
     "electrician": {
-        "scurt": "Electrician", "nume": "Electrician", "icon": "bolt", "emoji": "⚡", "pret": (100, 350), "durata": 60,
+        "scurt": "Electrician", "nume": "Electrician", "icon": "bolt", "emoji": "", "pret": (100, 350), "durata": 60,
         "cuvinte": ["priz", "siguranț", "sigurant", "curent", "lumin", "bec", "tablou", "întrerup", "intrerup",
                     "scântei", "scantei", "cablu", "electric", "lustr"],
         "materiale": ["priză / întrerupător", "siguranță automată", "cablu"],
         "sfat": "Oprește siguranța circuitului respectiv din tablou și nu atinge priza.",
     },
     "termice": {
-        "scurt": "Centrale", "nume": "Centrale și calorifere", "icon": "mode_heat", "emoji": "🔥", "pret": (150, 450), "durata": 90,
+        "scurt": "Centrale", "nume": "Centrale și calorifere", "icon": "mode_heat", "emoji": "", "pret": (150, 450), "durata": 90,
         "cuvinte": ["central", "calorifer", "căldur", "caldur", "încălzire", "incalzire", "boiler", "termostat", "presiune"],
         "materiale": ["robinet calorifer", "aerisitor", "vas de expansiune"],
         "sfat": "Verifică presiunea de pe manometru și nu demonta nimic la centrală.",
     },
     "tamplar": {
-        "scurt": "Tâmplar", "nume": "Tâmplar", "icon": "carpenter", "emoji": "🪚", "pret": (100, 400), "durata": 90,
+        "scurt": "Tâmplar", "nume": "Tâmplar", "icon": "carpenter", "emoji": "", "pret": (100, 400), "durata": 90,
         "cuvinte": ["ușă", "usa", "usă", "fereastr", "geam", "dulap", "balama", "sertar", "mobil", "parchet", "raft", "pervaz"],
         "materiale": ["balamale", "șuruburi", "adeziv lemn"],
         "sfat": "Nu forța piesa blocată, ca să nu se rupă balamalele.",
     },
     "zugrav": {
-        "scurt": "Zugrav", "nume": "Zugrav", "icon": "format_paint", "emoji": "🎨", "pret": (200, 900), "durata": 240,
+        "scurt": "Zugrav", "nume": "Zugrav", "icon": "format_paint", "emoji": "", "pret": (200, 900), "durata": 240,
         "cuvinte": ["zugrăv", "zugrav", "vopsea", "vopsit", "perete", "pereți", "tavan", "mucegai", "glet", "fisur", "tencuial", "igrasie"],
         "materiale": ["vopsea lavabilă", "glet", "amorsă"],
         "sfat": "Aerisește camera; dacă e mucegai, nu-l freca pe uscat.",
     },
     "lacatus": {
-        "scurt": "Lăcătuș", "nume": "Lăcătuș", "icon": "key", "emoji": "🔑", "pret": (100, 350), "durata": 45,
+        "scurt": "Lăcătuș", "nume": "Lăcătuș", "icon": "key", "emoji": "", "pret": (100, 350), "durata": 45,
         "cuvinte": ["yal", "ial", "încuietoare", "incuietoare", "cheie", "cheia", "blocat afar", "butuc", "lacăt", "lacat", "broasc"],
         "materiale": ["butuc yală", "broască"],
         "sfat": "Nu forța cheia în yală, se poate rupe înăuntru.",
     },
     "electrocasnice": {
-        "scurt": "Aparate", "nume": "Reparații electrocasnice", "icon": "kitchen", "emoji": "🧺", "pret": (120, 400), "durata": 75,
+        "scurt": "Aparate", "nume": "Reparații electrocasnice", "icon": "kitchen", "emoji": "", "pret": (120, 400), "durata": 75,
         "cuvinte": ["mașină de spălat", "masina de spalat", "frigider", "cuptor", "aragaz", "hotă", "hota",
                     "mașina de vase", "masina de vase", "uscător", "uscator", "microunde", "congelator"],
         "materiale": ["furtun evacuare", "garnitură ușă", "pompă"],
         "sfat": "Scoate aparatul din priză și închide robinetul de apă al aparatului.",
     },
     "universal": {
-        "scurt": "Diverse", "nume": "Meșter universal", "icon": "handyman", "emoji": "🛠️", "pret": (80, 300), "durata": 60,
+        "scurt": "Diverse", "nume": "Meșter universal", "icon": "handyman", "emoji": "", "pret": (80, 300), "durata": 60,
         "cuvinte": ["montaj", "montat", "montez", "tablou", "poliț", "polit", "galerie", "televizor", "suport", "asambl"],
         "materiale": ["dibluri", "șuruburi"],
         "sfat": "Pregătește locul de lucru și eliberează accesul.",

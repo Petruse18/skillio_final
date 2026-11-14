@@ -8,17 +8,21 @@ Viața unei lucrări:
     acceptata   clientul a ales o ofertă, se stabilește ora
     de_plata    ora e stabilită de amândoi, clientul plătește
     programata  plătit, banii sunt blocați până la final
-    sosit       rețeaua a confirmat că meșterul e la adresă
+    sosit       meșterul e la adresă și trebuie să reconfirme prețul (poză + motiv)
+    reconfirmare  clientul acceptă prețul reconfirmat sau refuză (plătește doar deplasarea)
+    in_lucru    meșterul lucrează
     gata        meșterul a terminat, așteaptă confirmarea clientului
-    finalizata  clientul a confirmat, banii au ajuns la meșter
-    disputa     clientul a raportat o problemă, decide un admin
+    confirmata  ambii au confirmat; banii mai stau blocați 24 de ore, oricine poate deschide dispută
+    finalizata  banii au ajuns la meșter
+    disputa     o parte a deschis o dispută, decide un mediator uman
     anulata
 """
 import json
+import re
 import secrets
 from datetime import datetime, timedelta
 
-from services import geo, mesaje_externe, nokia, solana, stocare
+from services import geo, mesaje_externe, solana, stocare
 
 from . import config, db, timp, trust
 
@@ -28,12 +32,17 @@ STATUS = {
     "de_plata": ("De plătit", "escrow"),
     "programata": ("Programată", "ok"),
     "sosit": ("Meșterul e la tine", "ok"),
+    "reconfirmare": ("Confirmă prețul", "escrow"),
+    "in_lucru": ("În lucru", "ok"),
     "gata": ("Confirmă lucrarea", "escrow"),
+    "confirmata": ("Plata pleacă în 24 h", "escrow"),
     "finalizata": ("Finalizată", "ok"),
-    "disputa": ("În verificare", "danger"),
+    "disputa": ("La mediator", "danger"),
     "anulata": ("Anulată", "neutru"),
 }
-ACTIVE = ("deschisa", "acceptata", "de_plata", "programata", "sosit", "gata", "disputa")
+ACTIVE = ("deschisa", "acceptata", "de_plata", "programata", "sosit", "reconfirmare", "in_lucru", "gata",
+          "confirmata", "disputa")
+IN_CURS = ("sosit", "reconfirmare", "in_lucru", "gata", "confirmata")   # aici se poate deschide o dispută
 
 
 class Eroare(Exception):
@@ -70,8 +79,7 @@ def creeaza_cont(telefon, nume, rol, cartier, adresa="", meserii=(), email=None,
         raise Eroare("Scrie-ți numele.")
     if rol == "mester" and not meserii:
         raise Eroare("Alege cel puțin o meserie.")
-    verificat, _ = nokia.verifica_numar(telefon)
-    schimbat, _ = nokia.sim_schimbat_recent(telefon)
+    verificat, schimbat = True, False
     lat, lon = config.CARTIERE.get(cartier, config.CENTRU_ORAS)
     uid = db.ex(
         "INSERT INTO utilizatori(telefon, nume, rol, creat_la, numar_verificat, sim_ok, sim_verificat_la, adresa, "
@@ -95,18 +103,12 @@ def user_dupa_auth(sub, email=None):
 
 
 def intra(telefon):
-    """Login fără parolă: numărul e verificat de rețea (Nokia), apoi verificăm SIM swap."""
+    """Intrare demo cu numărul de telefon (în producție: Auth0, cod prin SMS sau email)."""
     telefon = normalizeaza_telefon(telefon)
     u = user_dupa_telefon(telefon)
     if not u:
         raise Eroare("Nu găsim un cont cu acest număr. Creează unul în câteva secunde.")
-    verificat, mod = nokia.verifica_numar(telefon)
-    if not verificat:
-        raise Eroare("Rețeaua nu confirmă că numărul e pe acest telefon. Încearcă de pe telefonul cu acest SIM.")
-    schimbat, _ = nokia.sim_schimbat_recent(telefon)
-    db.ex("UPDATE utilizatori SET numar_verificat = 1, sim_ok = ?, sim_verificat_la = ? WHERE id = ?",
-          (int(not schimbat), timp.iso(timp.acum()), u["id"]))
-    return u["id"], mod, schimbat
+    return u["id"], "demo", False
 
 
 def sesiune_noua(uid) -> str:
@@ -296,7 +298,7 @@ def refuza_solicitare(lid, mester_id):
 
 def anuleaza_lucrare(lid, de_cine, motiv="Anulată de client"):
     l = lucrare(lid)
-    if l["status"] in ("finalizata", "anulata", "sosit", "gata", "disputa"):
+    if l["status"] in ("finalizata", "anulata", "disputa") + IN_CURS:
         raise Eroare("Lucrarea nu mai poate fi anulată în acest moment.")
     platite = db.q("SELECT * FROM plati WHERE lucrare_id = ? AND status = 'blocat'", (lid,))
     for p in platite:
@@ -315,6 +317,10 @@ def anuleaza_lucrare(lid, de_cine, motiv="Anulată de client"):
 # ---------------------------------------------------------------------------
 # Oferte și programare
 # ---------------------------------------------------------------------------
+def taxa_protectie(suma):
+    return round(suma * config.TAXA_PROTECTIE, 2)
+
+
 def total_cu_urgenta(pret, urgent):
     return round(pret * (1 + config.SPOR_URGENT)) if urgent else round(pret)
 
@@ -401,9 +407,14 @@ def plateste(lid, client_id):
     pid = db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la) "
                 "VALUES(?,?,?,?,?,?,?,?)", (lid, client_id, l["mester_id"], o["total"], 0, "oferta", "blocat",
                                             timp.iso(timp.acum())))
+    prot = taxa_protectie(o["total"])
+    db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la) "
+          "VALUES(?,?,?,?,?,?,?,?)", (lid, client_id, l["mester_id"], prot, 0, "protectie", "blocat",
+                                      timp.iso(timp.acum())))
     _blocheaza_onchain(pid, lid, o["total"])
     db.ex("UPDATE lucrari SET status = 'programata' WHERE id = ?", (lid,))
-    mesaj_sistem(lid, f"{timp.lei(o['total'])} plătiți și blocați în SKILLIO până la finalul lucrării.")
+    mesaj_sistem(lid, f"{timp.lei(o['total'] + prot)} plătiți și blocați în SKILLIO până la finalul lucrării "
+                      f"(include taxa de protecție de {config.PCT_PROTECTIE}).")
     notifica(l["mester_id"], f"Clientul a plătit {timp.lei(o['total'])} (blocați până la final). "
                              f"Te așteaptă {timp.data_ora(l['programat_la'])}.", lid, extern=True)
 
@@ -469,25 +480,98 @@ def am_ajuns(lid, mester_id):
     if l["mester_id"] != mester_id or l["status"] != "programata":
         raise Eroare("Lucrarea nu e programată.")
     m = user(mester_id)
-    la_adresa, mod = nokia.e_la_adresa(m["telefon"], l["lat"], l["lon"], config.RAZA_SOSIRE_M,
-                                       bool(m["departe_demo"]))
-    if not la_adresa:
-        raise Eroare("Rețeaua te localizează departe de adresa clientului. Apasă din nou când ajungi.")
     acum = timp.acum()
     prog = timp.din_iso(l["programat_la"])
     punctual = int(acum <= prog + timedelta(minutes=config.TOLERANTA_PUNCTUAL_MIN))
-    db.ex("UPDATE lucrari SET status = 'sosit', sosit_la = ?, sosire_mod = ?, punctual = ? WHERE id = ?",
-          (timp.iso(acum), mod, punctual, lid))
-    text = "Sosire confirmată de rețeaua Nokia" if mod == "live" else "Sosire confirmată (simulare rețea)"
-    mesaj_sistem(lid, f"{text}: {m['nume']} e la adresă, ora {acum:%H:%M}" + ("." if punctual else " (cu întârziere)."))
-    notifica(l["client_id"], f"{m['nume']} a ajuns. Sosirea e confirmată de rețea.", lid)
-    return mod, punctual
+    db.ex("UPDATE lucrari SET status = 'sosit', sosit_la = ?, sosire_mod = 'aplicatie', punctual = ? WHERE id = ?",
+          (timp.iso(acum), punctual, lid))
+    mesaj_sistem(lid, f"{m['nume']} a ajuns la {acum:%H:%M}" + ("." if punctual else " (cu întârziere).") +
+                 " Urmează reconfirmarea prețului, cu poză.")
+    notifica(l["client_id"], f"{m['nume']} a ajuns. Îți trimite acum prețul reconfirmat.", lid)
+    return "aplicatie", punctual
+
+
+def pret_curent(lid):
+    """Cât plătește clientul pentru lucrare (ofertă + extra acceptate), fără taxa de protecție."""
+    return sum(p["suma"] for p in db.q("SELECT suma FROM plati WHERE lucrare_id = ? AND status = 'blocat' "
+                                       "AND tip IN ('oferta','extra')", (lid,)))
+
+
+def reconfirma_pret(lid, mester_id, pret, motiv, poza=None, poza_bytes=None, mime="image/jpeg"):
+    """La fața locului, meșterul reconfirmă prețul cu o poză și un motiv. AI-ul doar dă o părere."""
+    l = lucrare(lid)
+    if l["mester_id"] != mester_id or l["status"] != "sosit":
+        raise Eroare("Prețul se reconfirmă după ce ai ajuns la adresă.")
+    if pret <= 0 or not (motiv or "").strip():
+        raise Eroare("Scrie prețul și motivul, ca să înțeleagă clientul.")
+    if not poza:
+        raise Eroare("Adaugă o poză cu problema văzută de aproape.")
+    from services import ai
+    vechi = pret_curent(lid)
+    parere = ai.verifica_pret(l, vechi, pret, motiv, poza_bytes, mime)
+    rec = {"pret": float(pret), "vechi": vechi, "motiv": motiv.strip(), "poza": poza, "ai": parere}
+    db.ex("UPDATE lucrari SET status = 'reconfirmare', reconf = ? WHERE id = ?", (json.dumps(rec, ensure_ascii=False), lid))
+    dif = pret - vechi
+    mesaj_sistem(lid, f"Preț reconfirmat la fața locului: {timp.lei(pret)}" +
+                 (f" ({'+' if dif > 0 else '−'}{timp.lei(abs(dif))} față de ofertă)" if dif else " (la fel ca oferta)") +
+                 f". Motiv: {motiv.strip()}")
+    notifica(l["client_id"], f"Meșterul a reconfirmat prețul: {timp.lei(pret)}. Acceptă sau refuză.", lid)
+
+
+def reconfirmare(l):
+    try:
+        return json.loads(l.get("reconf") or "{}")
+    except (TypeError, ValueError):
+        return {}
+
+
+def raspunde_reconfirmare(lid, client_id, accept: bool):
+    l = lucrare(lid)
+    if l["client_id"] != client_id or l["status"] != "reconfirmare":
+        raise Eroare("Nu există un preț de confirmat.")
+    r = reconfirmare(l)
+    acum = timp.iso(timp.acum())
+    oferta = db.q1("SELECT * FROM plati WHERE lucrare_id = ? AND tip = 'oferta' AND status = 'blocat'", (lid,))
+    if accept:
+        dif = round(r["pret"] - r["vechi"], 2)
+        if dif > 0:
+            pid = db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la) "
+                        "VALUES(?,?,?,?,?,?,?,?)", (lid, client_id, l["mester_id"], dif, 0, "extra", "blocat", acum))
+            db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la) "
+                  "VALUES(?,?,?,?,?,?,?,?)", (lid, client_id, l["mester_id"], taxa_protectie(dif), 0, "protectie",
+                                              "blocat", acum))
+            _blocheaza_onchain(pid, lid, dif)
+        elif dif < 0 and oferta:
+            db.ex("UPDATE plati SET suma = suma - ? WHERE id = ?", (-dif, oferta["id"]))
+            db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la, "
+                  "rezolvat_la) VALUES(?,?,?,?,?,?,?,?,?)", (lid, client_id, l["mester_id"], -dif, 0, "oferta",
+                                                             "returnat", acum, acum))
+        db.ex("UPDATE lucrari SET status = 'in_lucru' WHERE id = ?", (lid,))
+        mesaj_sistem(lid, f"Clientul a acceptat prețul de {timp.lei(r['pret'])}. Meșterul poate începe.")
+        notifica(l["mester_id"], "Clientul a acceptat prețul. Poți începe lucrarea.", lid)
+        return
+    # refuz: clientul plătește doar deplasarea, restul se întoarce
+    taxa = min(config.TAXA_DEPLASARE, oferta["suma"] if oferta else 0)
+    blocate = db.q("SELECT * FROM plati WHERE lucrare_id = ? AND status = 'blocat'", (lid,))
+    for p in blocate:
+        db.ex("UPDATE plati SET status = 'returnat', rezolvat_la = ? WHERE id = ?", (acum, p["id"]))
+    if taxa:
+        db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la, rezolvat_la) "
+              "VALUES(?,?,?,?,?,?,?,?,?)", (lid, client_id, l["mester_id"], taxa, round(taxa * config.COMISION, 2),
+                                            "deplasare", "eliberat", acum, acum))
+        if oferta:
+            db.ex("UPDATE plati SET suma = suma - ? WHERE id = ?", (taxa, oferta["id"]))
+    _returneaza_onchain(lid, blocate)
+    db.ex("UPDATE lucrari SET status = 'anulata', anulat_motiv = 'Clientul a refuzat prețul de la fața locului' "
+          "WHERE id = ?", (lid,))
+    mesaj_sistem(lid, f"Clientul a refuzat prețul. A plătit doar deplasarea ({timp.lei(taxa)}), restul s-a întors.")
+    notifica(l["mester_id"], f"Clientul a refuzat prețul. Primești taxa de deplasare: {timp.lei(taxa)}.", lid)
 
 
 def cere_extra(lid, mester_id, suma, motiv):
     l = lucrare(lid)
-    if l["mester_id"] != mester_id or l["status"] not in ("sosit", "programata"):
-        raise Eroare("Poți cere o lucrare în plus doar la lucrările în curs.")
+    if l["mester_id"] != mester_id or l["status"] != "in_lucru":
+        raise Eroare("Poți cere o lucrare în plus doar în timpul lucrului.")
     if suma <= 0 or not motiv.strip():
         raise Eroare("Scrie suma și ce lucrare în plus e nevoie.")
     db.ex("INSERT INTO extra(lucrare_id, suma, motiv, status, creat_la) VALUES(?,?,?,?,?)",
@@ -503,9 +587,12 @@ def raspunde_extra(eid, client_id, accept: bool):
         raise Eroare("Oferta nu mai este valabilă.")
     db.ex("UPDATE extra SET status = ? WHERE id = ?", ("acceptata" if accept else "respinsa", eid))
     if accept:
+        acum = timp.iso(timp.acum())
         pid = db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la) "
-                    "VALUES(?,?,?,?,?,?,?,?)", (l["id"], client_id, l["mester_id"], e["suma"], 0, "extra", "blocat",
-                                                timp.iso(timp.acum())))
+                    "VALUES(?,?,?,?,?,?,?,?)", (l["id"], client_id, l["mester_id"], e["suma"], 0, "extra", "blocat", acum))
+        db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la) "
+              "VALUES(?,?,?,?,?,?,?,?)", (l["id"], client_id, l["mester_id"], taxa_protectie(e["suma"]), 0,
+                                          "protectie", "blocat", acum))
         _blocheaza_onchain(pid, l["id"], e["suma"])
         mesaj_sistem(l["id"], f"Lucrarea în plus a fost acceptată: {timp.lei(e['suma'])} plătiți și blocați.")
     else:
@@ -519,34 +606,54 @@ def extra_lucrare(lid):
 
 def lucrare_gata(lid, mester_id, nota="", poza=None):
     l = lucrare(lid)
-    if l["mester_id"] != mester_id or l["status"] != "sosit":
-        raise Eroare("Apasă întâi „Am ajuns”, ca rețeaua să confirme sosirea.")
+    if l["mester_id"] != mester_id or l["status"] != "in_lucru":
+        raise Eroare("Lucrarea nu e în lucru.")
     db.ex("UPDATE lucrari SET status = 'gata', gata_la = ?, nota_mester = ?, poza_dupa = ? WHERE id = ?",
           (timp.iso(timp.acum()), nota.strip(), poza, lid))
     mesaj_sistem(lid, "Meșterul a marcat lucrarea ca gata." + (f" Notă: {nota.strip()}" if nota.strip() else ""))
-    notifica(l["client_id"], "Lucrarea e gata. Verifică și confirmă ca să plătești meșterul.", lid, extern=True)
+    notifica(l["client_id"], "Lucrarea e gata. Verifică și confirmă.", lid, extern=True)
 
 
 def confirma_lucrare(lid, client_id):
-    """Clientul bifează că totul e în regulă: banii blocați ajung la meșter, minus comisionul."""
+    """Clientul confirmă. Banii mai stau blocați 24 de ore: în acest timp oricare parte poate deschide o dispută."""
     l = lucrare(lid)
     if l["client_id"] != client_id or l["status"] != "gata":
         raise Eroare("Lucrarea nu așteaptă confirmare.")
     acum = timp.acum()
-    total = 0
-    blocate = db.q("SELECT * FROM plati WHERE lucrare_id = ? AND status = 'blocat'", (lid,))
-    for p in blocate:
-        com = round(p["suma"] * config.COMISION, 2)
-        db.ex("UPDATE plati SET status = 'eliberat', comision = ?, rezolvat_la = ? WHERE id = ?",
-              (com, timp.iso(acum), p["id"]))
-        total += p["suma"]
-    db.ex("UPDATE lucrari SET status = 'finalizata', confirmat_la = ? WHERE id = ?", (timp.iso(acum), lid))
-    _elibereaza_onchain(lid, blocate)
+    db.ex("UPDATE lucrari SET status = 'confirmata', confirmat_la = ? WHERE id = ?", (timp.iso(acum), lid))
     programeaza_feedback(lid, acum)
-    net = total * (1 - config.COMISION)
-    mesaj_sistem(lid, f"Clientul a confirmat lucrarea. {timp.lei(net)} au ajuns la meșter "
-                      f"(din {timp.lei(total)}, comision SKILLIO {config.COMISION:.0%}).")
+    pana = acum + timedelta(hours=config.FEREASTRA_DISPUTA_ORE)
+    mesaj_sistem(lid, f"Ambele părți au confirmat. Banii pleacă la meșter pe {timp.data_ora(pana)}, dacă nimeni "
+                      f"nu deschide o dispută până atunci.")
+    notifica(l["mester_id"], f"Clientul a confirmat. Primești banii pe {timp.data_ora(pana)}.", lid, extern=True)
+
+
+def elibereaza_plata(lid):
+    """Banii blocați ajung la meșter (minus comisionul); taxa de protecție rămâne la SKILLIO."""
+    l = lucrare(lid)
+    acum = timp.iso(timp.acum())
+    blocate = db.q("SELECT * FROM plati WHERE lucrare_id = ? AND status = 'blocat'", (lid,))
+    net = 0
+    for p in blocate:
+        com = p["suma"] if p["tip"] == "protectie" else round(p["suma"] * config.COMISION, 2)
+        db.ex("UPDATE plati SET status = 'eliberat', comision = ?, rezolvat_la = ? WHERE id = ?", (com, acum, p["id"]))
+        net += p["suma"] - com
+    db.ex("UPDATE lucrari SET status = 'finalizata' WHERE id = ?", (lid,))
+    if not l["confirmat_la"]:
+        db.ex("UPDATE lucrari SET confirmat_la = ? WHERE id = ?", (acum, lid))
+        programeaza_feedback(lid, timp.acum())
+    _elibereaza_onchain(lid, [p for p in blocate if p["tip"] != "protectie"])
+    mesaj_sistem(lid, f"{timp.lei(net)} au ajuns la meșter (comision SKILLIO {config.PCT_COMISION}).")
     notifica(l["mester_id"], f"Ai încasat {timp.lei(net)} pentru „{l['titlu']}”.", lid, extern=True)
+
+
+def elibereaza_scadente():
+    """Rulează la fiecare încărcare: plătește lucrările și apelurile SOS al căror termen de dispută a trecut."""
+    prag = timp.iso(timp.acum() - timedelta(hours=config.FEREASTRA_DISPUTA_ORE))
+    for l in db.q("SELECT id FROM lucrari WHERE status = 'confirmata' AND confirmat_la <= ?", (prag,)):
+        elibereaza_plata(l["id"])
+    for s_ in db.q("SELECT id FROM sos WHERE status = 'incheiat' AND incheiat_la <= ?", (prag,)):
+        _plateste_sos(s_["id"])
 
 
 def nu_a_venit(lid, client_id):
@@ -645,19 +752,21 @@ def medii_criterii(mester_id):
 # Rapoarte și dispute
 # ---------------------------------------------------------------------------
 def raporteaza(lid, autor_id, vizat_id, motiv, detalii=""):
+    """Un raport. Dacă lucrarea e în curs (sau în cele 24 de ore), devine dispută: banii rămân blocați
+    și decide un mediator uman din echipa SKILLIO."""
     l = lucrare(lid) if lid else None
     disputa = 0
-    if l and autor_id == l["client_id"] and l["status"] in ("sosit", "gata"):
+    if l and autor_id in (l["client_id"], l["mester_id"]) and l["status"] in IN_CURS:
         disputa = 1
-        db.ex("UPDATE lucrari SET status = 'disputa' WHERE id = ?", (lid,))
-        mesaj_sistem(lid, "Clientul a raportat o problemă. Banii rămân blocați până decide echipa SKILLIO.")
-        notifica(l["mester_id"], "Clientul a raportat o problemă la lucrare. Banii rămân blocați până la verificare.",
-                 lid)
+        db.ex("UPDATE lucrari SET status = 'disputa', status_inainte = ? WHERE id = ?", (l["status"], lid))
+        cine = "Clientul" if autor_id == l["client_id"] else "Meșterul"
+        mesaj_sistem(lid, f"{cine} a deschis o dispută. Banii rămân blocați până decide un mediator SKILLIO.")
+        notifica(vizat_id, f"{cine} a deschis o dispută. Un mediator te contactează. Banii rămân blocați.", lid)
     db.ex("INSERT INTO rapoarte(lucrare_id, autor_id, vizat_id, motiv, detalii, disputa, status, creat_la) "
           "VALUES(?,?,?,?,?,?,?,?)", (lid, autor_id, vizat_id, motiv, detalii.strip(), disputa, "deschis",
                                       timp.iso(timp.acum())))
     for a in db.q("SELECT id FROM utilizatori WHERE rol = 'admin'"):
-        notifica(a["id"], f"Raport nou: {motiv}", lid)
+        notifica(a["id"], ("Dispută nouă: " if disputa else "Raport nou: ") + motiv, lid)
 
 
 def rapoarte(status=None):
@@ -669,29 +778,141 @@ def rapoarte(status=None):
     return db.q(sql + " ORDER BY r.id DESC")
 
 
-def rezolva_raport(rid, confirmat: bool, rezolutie=""):
+def rezolva_raport(rid, castiga_clientul: bool, rezolutie=""):
+    """Decizia mediatorului uman. castiga_clientul=True: banii se întorc (meșterul păstrează doar deplasarea,
+    dacă a venit). False: banii ajung la meșter."""
     r = db.q1("SELECT * FROM rapoarte WHERE id = ?", (rid,))
+    l = lucrare(r["lucrare_id"]) if r["lucrare_id"] else None
+    # „confirmat” = raportul autorului e întemeiat
+    autor_client = bool(l) and r["autor_id"] == l["client_id"]
+    confirmat = (castiga_clientul == autor_client) if (l and r["disputa"]) else castiga_clientul
     db.ex("UPDATE rapoarte SET status = ?, rezolvat_la = ?, rezolutie = ? WHERE id = ?",
           ("confirmat" if confirmat else "respins", timp.iso(timp.acum()), rezolutie.strip(), rid))
-    if r["disputa"] and r["lucrare_id"]:
-        l = lucrare(r["lucrare_id"])
-        if l["status"] == "disputa":
-            if confirmat:  # clientul are dreptate: banii se întorc
-                platite = db.q("SELECT * FROM plati WHERE lucrare_id = ? AND status = 'blocat'", (l["id"],))
-                for p in platite:
-                    db.ex("UPDATE plati SET status = 'returnat', rezolvat_la = ? WHERE id = ?",
-                          (timp.iso(timp.acum()), p["id"]))
-                _returneaza_onchain(l["id"], platite)
-                db.ex("UPDATE lucrari SET status = 'anulata', anulat_motiv = 'Dispută câștigată de client' "
-                      "WHERE id = ?", (l["id"],))
-                mesaj_sistem(l["id"], "Echipa SKILLIO a dat dreptate clientului. Banii s-au întors la client.")
-            else:  # meșterul are dreptate: lucrarea e confirmată
-                db.ex("UPDATE lucrari SET status = 'gata' WHERE id = ?", (l["id"],))
-                confirma_lucrare(l["id"], l["client_id"])
-                mesaj_sistem(l["id"], "Echipa SKILLIO a verificat lucrarea și a confirmat-o.")
+    if r["disputa"] and l and l["status"] == "disputa":
+        acum = timp.iso(timp.acum())
+        if castiga_clientul:
+            blocate = db.q("SELECT * FROM plati WHERE lucrare_id = ? AND status = 'blocat'", (l["id"],))
+            for p in blocate:
+                db.ex("UPDATE plati SET status = 'returnat', rezolvat_la = ? WHERE id = ?", (acum, p["id"]))
+            taxa = 0
+            if l["sosit_la"]:
+                taxa = config.TAXA_DEPLASARE
+                db.ex("INSERT INTO plati(lucrare_id, client_id, mester_id, suma, comision, tip, status, creat_la, "
+                      "rezolvat_la) VALUES(?,?,?,?,?,?,?,?,?)", (l["id"], l["client_id"], l["mester_id"], taxa,
+                                                                 round(taxa * config.COMISION, 2), "deplasare",
+                                                                 "eliberat", acum, acum))
+            _returneaza_onchain(l["id"], blocate)
+            db.ex("UPDATE lucrari SET status = 'anulata', anulat_motiv = 'Mediatorul a dat dreptate clientului' "
+                  "WHERE id = ?", (l["id"],))
+            mesaj_sistem(l["id"], "Mediatorul SKILLIO a dat dreptate clientului. Banii s-au întors"
+                         + (f" (meșterul păstrează deplasarea, {timp.lei(taxa)})." if taxa else ".")
+                         + (f" Motiv: {rezolutie.strip()}" if rezolutie.strip() else ""))
+        else:
+            mesaj_sistem(l["id"], "Mediatorul SKILLIO a dat dreptate meșterului."
+                         + (f" Motiv: {rezolutie.strip()}" if rezolutie.strip() else ""))
+            elibereaza_plata(l["id"])
     for uid in (r["autor_id"], r["vizat_id"]):
         if uid:
-            notifica(uid, f"Raportul „{r['motiv']}” a fost {'confirmat' if confirmat else 'respins'}.", r["lucrare_id"])
+            notifica(uid, f"Mediatorul a decis în cazul „{r['motiv']}”.", r["lucrare_id"])
+
+
+# ---------------------------------------------------------------------------
+# SOS: un meșter real te ghidează prin video, în câteva minute
+# ---------------------------------------------------------------------------
+def cere_sos(client_id, meserie, problema, consimtamant):
+    if not consimtamant:
+        raise Eroare("Pentru siguranța ta, apelul se înregistrează. Bifează acordul ca să continui.")
+    if not (problema or "").strip():
+        raise Eroare("Scrie în două cuvinte ce s-a întâmplat.")
+    deschis = db.q1("SELECT id FROM sos WHERE client_id = ? AND status IN ('asteapta','in_apel')", (client_id,))
+    if deschis:
+        return deschis["id"]
+    sid = db.ex("INSERT INTO sos(client_id, meserie, problema, status, suma, camera, creat_la) VALUES(?,?,?,?,?,?,?)",
+                (client_id, meserie, problema.strip(), "asteapta", config.SOS_PRET,
+                 "skillio-sos-" + secrets.token_hex(5), timp.iso(timp.acum())))
+    for m in mesteri(meserie=meserie, doar_disponibili=True)[:10]:
+        notifica(m["id"], f"SOS: {problema.strip()[:50]}. Răspunde acum și primești {timp.lei(config.SOS_MESTER)}.")
+    return sid
+
+
+def sos(sid):
+    return db.q1("SELECT * FROM sos WHERE id = ?", (int(sid),))
+
+
+def sos_client(client_id):
+    return db.q("SELECT * FROM sos WHERE client_id = ? ORDER BY id DESC LIMIT 5", (client_id,))
+
+
+def sos_deschise(mester_id):
+    m = user(mester_id)
+    mes = meserii_lista(m)
+    rows = db.q("SELECT * FROM sos WHERE status = 'asteapta' OR (mester_id = ? AND status IN ('in_apel','incheiat',"
+                "'disputa')) ORDER BY id DESC", (mester_id,))
+    return [r for r in rows if r["mester_id"] == mester_id or r["meserie"] in mes]
+
+
+def accepta_sos(sid, mester_id):
+    s_ = sos(sid)
+    if s_["status"] != "asteapta":
+        raise Eroare("Alt meșter a preluat deja apelul.")
+    db.ex("UPDATE sos SET status = 'in_apel', mester_id = ?, inceput_la = ? WHERE id = ?",
+          (mester_id, timp.iso(timp.acum()), sid))
+    notifica(s_["client_id"], f"{user(mester_id)['nume']} intră în apel video cu tine.")
+
+
+def incheie_sos(sid, uid):
+    s_ = sos(sid)
+    if s_["status"] != "in_apel" or uid not in (s_["client_id"], s_["mester_id"]):
+        raise Eroare("Apelul nu e în desfășurare.")
+    db.ex("UPDATE sos SET status = 'incheiat', incheiat_la = ? WHERE id = ?", (timp.iso(timp.acum()), sid))
+    notifica(s_["client_id"] if uid == s_["mester_id"] else s_["mester_id"],
+             f"Apelul SOS s-a încheiat. Plata pleacă în {config.FEREASTRA_DISPUTA_ORE} de ore dacă nu e dispută.")
+
+
+def _plateste_sos(sid):
+    db.ex("UPDATE sos SET status = 'eliberat', rezolvat_la = ? WHERE id = ?", (timp.iso(timp.acum()), sid))
+    s_ = sos(sid)
+    notifica(s_["mester_id"], f"Ai primit {timp.lei(config.SOS_MESTER)} pentru apelul SOS.")
+
+
+def confirma_sos(sid, client_id):
+    s_ = sos(sid)
+    if s_["client_id"] != client_id or s_["status"] != "incheiat":
+        raise Eroare("Apelul nu așteaptă confirmare.")
+    _plateste_sos(sid)
+
+
+def disputa_sos(sid, uid, motiv):
+    s_ = sos(sid)
+    if uid not in (s_["client_id"], s_["mester_id"]) or s_["status"] not in ("in_apel", "incheiat"):
+        raise Eroare("Nu mai poți deschide o dispută pentru acest apel.")
+    db.ex("UPDATE sos SET status = 'disputa', motiv_disputa = ? WHERE id = ?", (motiv.strip() or "Nu m-a ajutat", sid))
+    for a in db.q("SELECT id FROM utilizatori WHERE rol = 'admin'"):
+        notifica(a["id"], f"Dispută SOS #{sid}: {motiv.strip() or 'Nu m-a ajutat'}")
+
+
+def rezolva_sos(sid, castiga_clientul: bool, rezolutie=""):
+    if castiga_clientul:
+        db.ex("UPDATE sos SET status = 'returnat', rezolvat_la = ?, rezolutie = ? WHERE id = ?",
+              (timp.iso(timp.acum()), rezolutie.strip(), sid))
+        notifica(sos(sid)["client_id"], f"Mediatorul a decis: primești înapoi {timp.lei(config.SOS_PRET)}.")
+    else:
+        db.ex("UPDATE sos SET rezolutie = ? WHERE id = ?", (rezolutie.strip(), sid))
+        _plateste_sos(sid)
+
+
+# ---------------------------------------------------------------------------
+# Agentul clientului: o lucrare mare devine etape, fiecare cu cererea ei
+# ---------------------------------------------------------------------------
+def creeaza_etape(u, plan):
+    ids = []
+    for e in plan.get("etape", []):
+        diag = {"pret_min": e.get("pret_min"), "pret_max": e.get("pret_max"), "durata_min": e.get("durata_min", 120),
+                "materiale": e.get("materiale", []), "descriere": e.get("descriere", ""), "sursa": plan.get("sursa")}
+        lid, _ = creeaza_lucrare(u["id"], e["titlu"], e.get("descriere") or e["titlu"], u["adresa"] or u["cartier"],
+                                 u["cartier"], e["meserie"], False, None, None, diag)
+        ids.append(lid)
+    return ids
 
 
 # ---------------------------------------------------------------------------
@@ -705,10 +926,25 @@ def mesaj_sistem(lid, text):
 def trimite_mesaj(lid, autor_id, text, poza=None):
     if not (text or "").strip() and not poza:
         return
-    l = lucrare(lid)
+    text, ascuns = filtreaza_contact(text or "")
     mid = db.ex("INSERT INTO mesaje(lucrare_id, autor_id, text, poza, creat_la) VALUES(?,?,?,?,?)",
-                (lid, autor_id, (text or "").strip(), poza, timp.iso(timp.acum())))
+                (lid, autor_id, text.strip(), poza, timp.iso(timp.acum())))
     marcheaza_citit(lid, autor_id, mid)
+    if ascuns:
+        mesaj_sistem(lid, "SKILLIO a ascuns datele de contact din mesaj. Numerele rămân private în ambele sensuri: "
+                          "plata blocată, garanția și medierea funcționează doar în aplicație.")
+
+
+_RE_TEL = re.compile(r"(?:\+?4?0|\b0)[\s.\-/]*7(?:[\s.\-/]*\d){8}|\b\d(?:[\s.\-/]*\d){8,}")
+_RE_MAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+_RE_APP = re.compile(r"\b(whats\s*app|wa\.me|telegram|signal|viber|revolut|messenger)\b", re.I)
+
+
+def filtreaza_contact(text):
+    nou = _RE_TEL.sub("•••", text)
+    nou = _RE_MAIL.sub("•••", nou)
+    nou = _RE_APP.sub("•••", nou)
+    return nou, nou != text
 
 
 def mesaje(lid):

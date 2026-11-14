@@ -6,12 +6,13 @@ import streamlit as st
 from views import comunitate
 
 from core import config, db, logica, timp
-from services import ai, autentificare, mesaje_externe, nokia, solana, stocare, voce
+from services import ai, autentificare, mesaje_externe, solana, stocare, voce
 from ui import comp as c
 
 
 def panou(u):
-    c.h('<div class="sk-title">Panou SKILLIO</div><div class="sk-cap">Doar pentru echipa SKILLIO</div>')
+    c.h('<div class="sk-title">Mediere</div><div class="sk-cap">Echipa SKILLIO. Fiecare dispută o decide un om, '
+        'pe baza pozelor, a chatului, a cronologiei și a înregistrărilor.</div>')
     s = logica.statistici_platforma()
     c.h('<div class="sk-stats">'
         f'<div class="sk-stat"><span class="v">{s["lucrari_active"]}</span><span class="l">Lucrări active</span></div>'
@@ -23,8 +24,9 @@ def panou(u):
         f'<div class="sk-stat"><span class="v">{s["mesteri"]}</span><span class="l">Meșteri</span></div>'
         f'<div class="sk-stat"><span class="v">{s["utilizatori"]}</span><span class="l">Clienți</span></div></div>')
 
+    _sos_dispute()
     deschise = logica.rapoarte("deschis")
-    c.h(f'<div class="sk-label">Rapoarte de rezolvat ({len(deschise)})</div>')
+    c.h(f'<div class="sk-label">Dispute și rapoarte ({len(deschise)})</div>')
     if not deschise:
         c.gol("Niciun raport deschis.", "check")
     for r in deschise:
@@ -33,7 +35,16 @@ def panou(u):
             c.h(f'<div class="sk-between"><div class="sk-h">{c.esc(r["motiv"])}</div>{disp}</div>'
                 f'<div class="sk-cap">{c.esc(r["autor"])} → {c.esc(r["vizat"])} · {timp.de_cand(r["creat_la"])}'
                 f'{" · " + c.esc(r["titlu"]) if r["titlu"] else ""}</div><div class="sk-b">{c.esc(r["detalii"])}</div>')
-            rez = st.text_input("Decizia (o vede și utilizatorul)", key=f"rez_{r['id']}")
+            if r["lucrare_id"]:
+                l = logica.lucrare(r["lucrare_id"])
+                rc = logica.reconfirmare(l)
+                bani = logica.bani_lucrare(l["id"])
+                c.h(c.kv([("Blocat", c.lei(bani["blocat"])), ("Preț reconfirmat", c.lei(rc["pret"]) if rc else "—"),
+                          ("Părere AI (doar informativ)", c.esc(rc.get("ai", {}).get("verdict", "—")) if rc else "—")]))
+                ultimele = logica.mesaje(l["id"])[-4:]
+                if ultimele:
+                    c.h('<div class="sk-cap">' + "<br>".join(c.esc(m["text"][:110]) for m in ultimele) + "</div>")
+            rez = st.text_input("Decizia mediatorului (o văd ambele părți)", key=f"rez_{r['id']}")
             with st.container(horizontal=True):
                 et_ok = "Dă dreptate clientului" if r["disputa"] else "Confirmă raportul"
                 et_no = "Dă dreptate meșterului" if r["disputa"] else "Respinge"
@@ -77,13 +88,6 @@ def panou(u):
             if st.button("Ceas real", key="t_0", width="stretch"):
                 db.pune_setare("decalaj_zile", 0)
                 st.rerun()
-        ionel = logica.user_dupa_telefon("+40722000101")
-        if ionel:
-            departe = st.toggle("Simulează că Ionel e departe de adresă (sosirea va fi respinsă)",
-                                value=bool(ionel["departe_demo"]), key="t_departe")
-            if departe != bool(ionel["departe_demo"]):
-                logica.actualizeaza_profil(ionel["id"], departe_demo=int(departe))
-                st.rerun()
         if st.button("Resetează datele demo", key="danger_reset"):
             st.session_state["_confirm_reset"] = True
         if st.session_state.get("_confirm_reset"):
@@ -120,7 +124,7 @@ def _integrari():
              ("Gemini", ai.activ(), "conectat", "reguli offline"),
              ("Solana", solana.activ(), config.SOLANA_CLUSTER, "plată simulată"),
              ("Voce", voce.activ(), "ElevenLabs", "vocea browserului"),
-             ("Nokia", nokia.activ(), "conectat", "simulat")]
+]
     with st.expander("Integrări și producție"):
         c.h('<div class="sk-badges">' + "".join(
             f'<span class="sk-badge {"ok" if on else ""}">{n}: {da if on else nu}</span>' for n, on, da, nu in stari)
@@ -152,3 +156,25 @@ def _integrari():
         if st.session_state.get("_backup"):
             st.download_button("Descarcă backup-ul", st.session_state["_backup"], file_name="skillio-backup.json",
                                mime="application/json", key="adm_backup_dl")
+
+
+def _sos_dispute():
+    rows = db.q("SELECT * FROM sos WHERE status = 'disputa' ORDER BY id DESC")
+    if not rows:
+        return
+    c.h(f'<div class="sk-label">Dispute SOS ({len(rows)})</div>')
+    for s_ in rows:
+        cl, me = logica.user(s_["client_id"]), logica.user(s_["mester_id"])
+        with st.container(key=f"card_sosd{s_['id']}"):
+            c.h(f'<div class="sk-between"><b class="sk-h">{c.esc(s_["problema"])}</b><span class="sk-badge danger">'
+                f'{c.lei(s_["suma"])} blocați</span></div><div class="sk-cap">{c.esc(cl["nume"])} ↔ '
+                f'{c.esc(me["nume"] if me else "—")} · apel înregistrat: {c.esc(s_["camera"])}.webm · se șterge '
+                f'automat după 30 de zile</div><div class="sk-b">Motiv: {c.esc(s_["motiv_disputa"])}</div>')
+            rez = st.text_input("Decizia mediatorului", key=f"sosrez_{s_['id']}")
+            with st.container(horizontal=True):
+                if st.button("Plătește meșterul", key=f"sos_no{s_['id']}", width="stretch"):
+                    logica.rezolva_sos(s_["id"], False, rez)
+                    st.rerun()
+                if st.button("Returnează clientului", type="primary", key=f"sos_ok{s_['id']}", width="stretch"):
+                    logica.rezolva_sos(s_["id"], True, rez)
+                    st.rerun()

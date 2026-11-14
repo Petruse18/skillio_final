@@ -156,6 +156,12 @@ CREATE TABLE IF NOT EXISTS sondaj (              -- Living Labs: chestionarul di
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, rol TEXT,
     usor INTEGER, incredere INTEGER, recomanda INTEGER, ar_folosi TEXT, ce_lipseste TEXT, creat_la TEXT
 );
+CREATE TABLE IF NOT EXISTS sos (                 -- apel video de urgență cu un meșter
+    id INTEGER PRIMARY KEY AUTOINCREMENT, client_id INTEGER, mester_id INTEGER, meserie TEXT, problema TEXT,
+    status TEXT,                     -- asteapta | in_apel | incheiat | disputa | eliberat | returnat
+    suma REAL, camera TEXT, creat_la TEXT, inceput_la TEXT, incheiat_la TEXT, rezolvat_la TEXT,
+    motiv_disputa TEXT, rezolutie TEXT
+);
 CREATE INDEX IF NOT EXISTS i_lucrari_client ON lucrari(client_id);
 CREATE INDEX IF NOT EXISTS i_lucrari_mester ON lucrari(mester_id);
 CREATE INDEX IF NOT EXISTS i_feedback_mester ON feedback(mester_id);
@@ -167,13 +173,14 @@ CREATE INDEX IF NOT EXISTS i_mesaje_lucrare ON mesaje(lucrare_id);
 PG = bool(config.DATABASE_URL)
 # tabelele care au coloană „id” (la INSERT întoarcem id-ul rândului nou)
 _CU_ID = {"utilizatori", "portofoliu", "lucrari", "oferte", "plati", "extra", "mesaje", "feedback", "rapoarte",
-          "notificari", "sondaj"}
+          "notificari", "sondaj", "sos"}
 # coloane adăugate după prima versiune: le adăugăm și în bazele vechi
 _COLOANE_NOI = [("utilizatori", "email", "TEXT"), ("utilizatori", "auth_sub", "TEXT"),
                 ("utilizatori", "notif_extern", "INTEGER DEFAULT 1"), ("sesiuni", "expira_la", "TEXT"),
                 ("utilizatori", "sol_wallet", "TEXT"),             # adresa Solana a meșterului (opțional)
                 ("plati", "lamports", "INTEGER"), ("plati", "tx_lock", "TEXT"), ("plati", "tx_final", "TEXT"),
-                ("lucrari", "pasaport", "TEXT"), ("lucrari", "tx_pasaport", "TEXT")]
+                ("lucrari", "pasaport", "TEXT"), ("lucrari", "reconf", "TEXT"),
+                ("lucrari", "status_inainte", "TEXT"), ("lucrari", "tx_pasaport", "TEXT")]
 
 
 def _schema_pg():
@@ -245,8 +252,11 @@ def _pg_pool():
         if _pool is None:
             from psycopg.rows import dict_row
             from psycopg_pool import ConnectionPool
-            _pool = ConnectionPool(config.DATABASE_URL, min_size=1, max_size=10, open=True,
-                                   kwargs={"row_factory": dict_row, "autocommit": False})
+            # check: o conexiune închisă de server (după pauză) e înlocuită automat, nu dă eroare în aplicație
+            _pool = ConnectionPool(config.DATABASE_URL, min_size=1, max_size=10, open=True, max_idle=120,
+                                   check=ConnectionPool.check_connection,
+                                   kwargs={"row_factory": dict_row, "autocommit": False,
+                                           "keepalives": 1, "keepalives_idle": 30})
             atexit.register(_pool.close)
         return _pool
 
@@ -433,7 +443,7 @@ def init():
 
 
 TABELE = ("utilizatori", "sesiuni", "portofoliu", "lucrari", "invitatii", "oferte", "plati", "extra",
-          "mesaje", "citit", "feedback", "rapoarte", "blocari", "notificari", "sondaj", "setari")
+          "mesaje", "citit", "feedback", "rapoarte", "blocari", "notificari", "sondaj", "setari", "sos")
 
 
 def reseteaza():

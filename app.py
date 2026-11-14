@@ -9,7 +9,7 @@ import streamlit as st
 from core import config, db, logica
 from ui import comp as c
 from services import autentificare
-from views import admin, client, comun, comunitate, lucrare, mester, prezentare
+from views import admin, asistent, client, comun, comunitate, lucrare, mester, prezentare, sos
 
 st.set_page_config(page_title="SKILLIO", page_icon="🌿",
                    layout="wide" if st.query_params.get("mod") == "prezentare" else "centered",
@@ -40,13 +40,13 @@ def _urmareste():
 
 
 NAV = {
-    "client": [("acasa", "Acasă", ":material/home:"), ("cauta", "Caută", ":material/search:"),
+    "client": [("acasa", "Acasă", ":material/home:"), ("asistent", "Agent", ":material/auto_awesome:"),
                ("solicitare", "Cerere", ":material/add:"), ("mesaje", "Chat", ":material/chat:"),
                ("cont", "Profil", ":material/person:")],
-    "mester": [("acasa", "Acasă", ":material/home:"), ("solicitari", "Solicitări", ":material/map:"),
+    "mester": [("acasa", "Acasă", ":material/home:"), ("solicitari", "Cereri", ":material/inbox:"),
                ("calendar", "Calendar", ":material/calendar_month:"), ("mesaje", "Chat", ":material/chat:"),
                ("cont", "Profil", ":material/person:")],
-    "admin": [("acasa", "Panou", ":material/dashboard:"), ("notificari", "Alerte", ":material/notifications:"),
+    "admin": [("acasa", "Mediere", ":material/gavel:"), ("notificari", "Alerte", ":material/notifications:"),
               ("cont", "Cont", ":material/person:")],
 }
 
@@ -94,12 +94,12 @@ def main():
     pag, id_ = c.pagina()
     if not u["ghid_vazut"] and u["rol"] != "admin" and pag != "ghid":
         pag = "ghid"
-    if st.session_state.pop("_avert_sim", False):
-        st.warning("Rețeaua arată că SIM-ul acestui număr a fost schimbat recent. Din motive de siguranță, "
-                   "profilul tău afișează un avertisment până la următoarea verificare.")
+    st.session_state.pop("_avert_sim", None)
+    logica.elibereaza_scadente()
 
     rol = u["rol"]
-    if pag not in ("ghid", "chat", "lucrare", "solicitare", "mester", "notificari", "feedback", "noutati"):
+    if pag not in ("ghid", "chat", "lucrare", "solicitare", "mester", "notificari", "feedback", "noutati", "sos",
+                   "asistent"):
         _clopotel(u)
 
     ecrane = {
@@ -112,10 +112,12 @@ def main():
         "feedback": lambda: comunitate.feedback(u),
         "noutati": lambda: comunitate.noutati(u),
         "lucrare": lambda: lucrare.ecran(u, id_),
+        "sos": lambda: sos.ecran(u, id_),
     }
     if rol == "client":
         ecrane.update({"acasa": lambda: client.acasa(u), "cauta": lambda: client.cauta(u),
-                       "solicitare": lambda: client.solicitare(u), "lucrari": lambda: client.lucrari(u)})
+                       "solicitare": lambda: client.solicitare(u), "lucrari": lambda: client.lucrari(u),
+                       "asistent": lambda: asistent.ecran(u)})
     elif rol == "mester":
         ecrane.update({"acasa": lambda: mester.acasa(u), "solicitari": lambda: mester.solicitari(u),
                        "calendar": lambda: mester.calendar(u)})

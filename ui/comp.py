@@ -60,9 +60,9 @@ def h(markup: str):
 def css():
     tokens = (DIR / "tokens.css").read_text(encoding="utf-8")
     comp = (DIR / "components.css").read_text(encoding="utf-8")
-    extra = (DIR / "streamlit.css").read_text(encoding="utf-8")
-    fonturi = ("@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800"
-               "&display=swap');")
+    extra = (DIR / "streamlit.css").read_text(encoding="utf-8") + (DIR / "modern.css").read_text(encoding="utf-8")
+    fonturi = ("@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700"
+               "&family=Geist+Mono:wght@500;600&display=swap');")
     st.markdown(f"<style>{fonturi}</style>", unsafe_allow_html=True)
     for bucata in (tokens, comp, extra):
         curat = "\n".join(r for r in bucata.splitlines() if r.strip())

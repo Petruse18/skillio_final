@@ -4,7 +4,7 @@ import streamlit as st
 from core import config, db, logica, timp, trust
 from core.logica import Eroare
 from services import autentificare as autentificare_srv
-from services import geo, nokia, solana, stocare
+from services import geo, solana, stocare
 from ui import comp as c
 
 # ---------------------------------------------------------------------------
@@ -48,8 +48,7 @@ def _intrare_demo():
     tab_in, tab_nou = st.tabs(["Intră cu telefonul", "Cont nou"])
     with tab_in:
         tel = st.text_input("Număr de telefon", placeholder="07xx xxx xxx", key="login_tel")
-        c.alerta("Fără parolă și fără SMS. Operatorul confirmă că numărul e chiar pe telefonul tău "
-                 "(<b>Nokia Number Verification</b>).", "trust", "shield")
+        c.alerta("Numărul tău rămâne privat: nu îl vede niciun meșter și niciun client.", "trust", "shield")
         if st.button("Continuă", type="primary" if not autentificare_srv.activ() else "secondary", width="stretch",
                      key="login_btn"):
             try:
@@ -113,50 +112,57 @@ def profil_nou():
 # ---------------------------------------------------------------------------
 GHID = {
     "client": [
-        ("leaf", "Bun venit în SKILLIO", "Contul tău e gata. Numărul tău a fost verificat de rețea, așa că meșterii "
-                                         "știu că ești o persoană reală."),
+        ("leaf", "Bun venit în SKILLIO", "Aici tu nu riști nimic: banii stau blocați până confirmați amândoi, "
+                                         "iar numărul tău rămâne privat."),
         ("wrench", "Alege serviciul", "Pe ecranul de start alegi o categorie (instalator, electrician...) sau "
                                       "cauți direct un meșter."),
-        ("sparkles", "Descrie problema", "Scrie ce s-a stricat și adaugă o poză. Asistentul AI îți spune ce meserie "
-                                         "trebuie, cât de urgent e și un preț orientativ."),
+        ("sparkles", "Vorbește cu agentul", "Spune-i ce vrei. Îți explică, îți dă costul și împarte lucrările mari "
+                                            "în etape, cu câte o cerere pentru fiecare."),
         ("shield", "Compară meșterii", "Fiecare meșter are un Trust Score 0-100, calculat din lucrări reale: "
                                        "recenzii, punctualitate, cât rezistă lucrările."),
         ("pin", "Trimite solicitarea", "Solicitarea ajunge la meșterii potriviți din zona ta. Bifează Urgent "
                                        f"(+{config.PCT_URGENT}) dacă nu poate aștepta."),
         ("wallet", "Alege oferta", "Primești oferte cu preț și oră. Alegi una, apoi stabiliți ora împreună."),
-        ("lock", "Plătești în siguranță", "Plătești oferta, dar banii rămân blocați în SKILLIO. Meșterul îi "
-                                          "primește doar după ce confirmi că lucrarea e în regulă."),
-        ("star", "Evaluează meșterul", "Lași o recenzie, iar după o zi, o săptămână și o lună te întrebăm dacă "
-                                       "lucrarea ține. Așa se construiește încrederea."),
+        ("lock", "Plătești în siguranță", "Banii rămân blocați. La sosire, meșterul reconfirmă prețul cu o poză: "
+                                          f"dacă refuzi, plătești doar deplasarea ({config.TAXA_DEPLASARE} lei)."),
+        ("star", "Mediator uman, nu robot", f"După confirmare mai ai {config.FEREASTRA_DISPUTA_ORE} de ore pentru o "
+                                            "dispută. O decide un om din echipa SKILLIO."),
     ],
     "mester": [
-        ("leaf", "Bun venit în SKILLIO", "Contul tău profesional e gata. Numărul și SIM-ul tău sunt verificate de "
-                                         "rețea și apar ca insigne pe profil."),
+        ("leaf", "Bun venit în SKILLIO", "Contul tău profesional e gata. Nu plătești pentru lead-uri: doar "
+                                         f"{config.PCT_COMISION} din lucrările făcute."),
         ("wrench", "Completează profilul", "Adaugă o descriere, experiența și poze cu lucrări. Clienții aleg mai "
                                            "ușor un profil complet."),
         ("check", "Adaugă specializările", "Alege meseriile tale. Primești doar solicitările care ți se potrivesc."),
         ("cal", "Setează disponibilitatea", "În calendar blochezi orele în care nu lucrezi. Clienții văd doar orele "
                                             "libere."),
-        ("pin", "Primește solicitări", f"Le vezi pe hartă, cu poză, descriere și urgență. Cele urgente (+{config.PCT_URGENT}) apar "
+        ("pin", "Primește solicitări", f"Le vezi cu poză, descriere și urgență. Cele urgente (+{config.PCT_URGENT}) apar "
                                        "primele."),
         ("wallet", "Trimite oferte", "Pui un preț și o oră. Dacă clientul acceptă, plătește, iar banii sunt "
                                      "blocați pentru tine."),
-        ("shield", "Ziua lucrării", "Apeși „Am ajuns”, iar rețeaua confirmă că ești la adresă. Asta îți crește "
-                                    "punctualitatea în Trust Score."),
-        ("star", "Construiește-ți reputația", f"După confirmarea clientului primești banii (minus {config.PCT_COMISION} comision). "
+        ("shield", "Ziua lucrării", "Apeși „Am ajuns” și reconfirmi prețul cu o poză. Dacă clientul refuză, "
+                                    f"primești deplasarea ({config.TAXA_DEPLASARE} lei)."),
+        ("star", "Construiește-ți reputația", f"Primești banii la {config.FEREASTRA_DISPUTA_ORE} h după confirmare. Și tu poți deschide o dispută. "
                                               "Recenziile și feedback-ul în timp îți ridică Trust Score-ul."),
     ],
 }
 FAQ = [
     ("Ce e Trust Score?", "Un scor 0-100 calculat doar din activitatea reală din aplicație: recenzii, cât rezistă "
-                          "lucrările, programări respectate, punctualitate confirmată de rețea, lucrări finalizate, "
+                          "lucrările, programări respectate, punctualitate, lucrări finalizate, "
                           "verificarea identității și reclamații. Fiecare factor e afișat pe profil."),
-    ("Când primește meșterul banii?", "Doar după ce clientul confirmă că lucrarea e în regulă. Până atunci banii "
-                                      "stau blocați în SKILLIO."),
+    ("Când primește meșterul banii?", f"După ce confirmați amândoi, banii mai stau blocați "
+                                      f"{config.FEREASTRA_DISPUTA_ORE} de ore. Dacă nimeni nu deschide o dispută, "
+                                      f"pleacă automat la meșter."),
+    ("Ce se întâmplă dacă prețul se schimbă la fața locului?", f"Meșterul reconfirmă prețul cu o poză și un motiv, "
+     f"iar AI-ul îți dă o părere. Dacă refuzi, plătești doar deplasarea ({config.TAXA_DEPLASARE} lei)."),
+    ("Cine rezolvă disputele?", f"Un mediator uman din echipa SKILLIO, niciodată un robot. Îl plătește taxa de "
+                                f"protecție de {config.PCT_PROTECTIE}."),
+    ("Ce e SOS?", f"Pentru {config.SOS_PRET} lei, un meșter te ghidează prin video cu instrucțiuni de siguranță. "
+                  f"Apelul se înregistrează cu acordul tău și se șterge după 30 de zile."),
     ("Ce înseamnă Urgent?", f"Lucrarea costă cu {config.PCT_URGENT} mai mult, iar meșterii o văd prima. Cei {config.PCT_URGENT} merg la meșter."),
     ("Ce fac dacă meșterul nu vine?", "La o oră după ora programată poți semnala asta, iar banii se întorc la tine."),
-    ("Cum verificați meșterii?", "Prin rețeaua mobilă (Nokia): numărul e verificat, iar un SIM schimbat recent "
-                                 "apare ca avertisment. Sosirea la adresă e confirmată tot de rețea."),
+    ("Cum verificați meșterii?", "Actul de identitate e verificat de echipa SKILLIO, iar Trust Score-ul vine "
+                                 "doar din lucrări reale. Numerele de telefon rămân ascunse în ambele sensuri."),
 ]
 
 
@@ -285,7 +291,7 @@ def profil_mester(u, mid, vizitator=True):
     meserii = ", ".join(c.meserie_nume(x) for x in logica.meserii_lista(m))
     c.h(f'<div class="sk-row top">{c.avatar(m, True)}<div class="sk-grow"><div class="sk-title">{c.esc(m["nume"])}'
         f'</div><div class="sk-cap">{c.esc(meserii)}</div><div class="sk-cap">{c.ico("pin", 12)} {c.esc(m["cartier"])}'
-        f' · lucrează pe o rază de {m["raza_km"]:.0f} km</div></div></div>{c.insigne_nokia(m)}')
+        f' · lucrează pe o rază de {m["raza_km"]:.0f} km</div></div></div>')
 
     # Trust Score
     programate = next(f for f in t["factori"] if f["cheie"] == "programari")
@@ -382,7 +388,7 @@ def _form_raport(u, lid, vizat, motive, key):
 def cont(u):
     c.h(f'<div class="sk-row">{c.avatar(u, True)}<div class="sk-grow"><div class="sk-title">{c.esc(u["nume"])}</div>'
         f'<div class="sk-cap">{c.esc(u["telefon"])} · {"Meșter" if u["rol"] == "mester" else "Client"}</div></div>'
-        f'</div>{c.insigne_nokia(u)}')
+        f'</div><div class="sk-cap">Numărul tău nu e arătat niciodată celeilalte părți.</div>')
     if u["rol"] == "mester":
         t = trust.calculeaza(u["id"])
         with st.container(key="card_mytrust"):
@@ -458,15 +464,6 @@ def cont(u):
                 c.toast("Document trimis la verificare.")
                 st.rerun()
 
-    with st.expander("Verificări prin rețea (Nokia)"):
-        ultima = timp.de_cand(u["sim_verificat_la"]) if u["sim_verificat_la"] else "niciodată"
-        st.markdown(f"Ultima verificare SIM: **{ultima}**  \nNokia: **{'conectat' if nokia.activ() else 'mod simulat'}**")
-        if st.button("Verifică din nou", key="reverif"):
-            schimbat, mod = nokia.sim_schimbat_recent(u["telefon"])
-            db.ex("UPDATE utilizatori SET sim_ok = ?, sim_verificat_la = ? WHERE id = ?",
-                  (int(not schimbat), timp.iso(timp.acum()), u["id"]))
-            c.toast("SIM verificat: " + ("schimbat recent!" if schimbat else "stabil") + f" ({c.sursa_api(mod)})")
-            st.rerun()
 
     with st.container(horizontal=True):
         if st.button("Reia ghidul", key="reia_ghid", width="stretch", icon=":material/school:"):

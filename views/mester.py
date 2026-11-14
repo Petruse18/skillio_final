@@ -20,7 +20,14 @@ def acasa(u):
         st.caption("Clienții te văd în căutări și primești solicitări." if disp else
                    "Nu primești solicitări noi. Lucrările programate rămân.")
 
-    urm = sorted([l for l in logica.lucrari_mester(u["id"]) if l["status"] in ("de_plata", "programata", "sosit")
+    sos_n = len([x for x in logica.sos_deschise(u["id"]) if x["status"] in ("asteapta", "in_apel")])
+    with st.container(key="card_sos"):
+        c.h(f'<div class="sk-row"><span class="sk-sos-dot"></span><div class="sk-grow"><div class="sk-h">Apeluri SOS'
+            f'{f" · {sos_n} acum" if sos_n else ""}</div><div class="sk-cap">Ghidezi un client prin video și primești '
+            f'{c.lei(config.SOS_MESTER)}.</div></div></div>')
+        if st.button("Vezi apelurile", key="m_sos", width="stretch", type="primary" if sos_n else "secondary"):
+            c.go("sos")
+    urm = sorted([l for l in logica.lucrari_mester(u["id"]) if l["status"] in ("de_plata", "programata", "sosit", "reconfirmare", "in_lucru")
                   and l["programat_la"]], key=lambda l: l["programat_la"])
     if urm:
         l = urm[0]

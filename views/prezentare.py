@@ -7,7 +7,7 @@ Ce faci pe un telefon apare pe celălalt în 1-2 secunde.
 import streamlit as st
 
 from core import config, db, logica, timp
-from services import ai, nokia
+from services import ai
 from ui import comp as c
 
 
@@ -25,8 +25,7 @@ def ecran():
     c.h(f'<div class="sk-between"><div class="sk-row">{c.logo(44)}'
         f'<div>{c.wordmark(26)}<div class="sk-cap">{config.SLOGAN} · mod prezentare</div></div></div>'
         f'<div class="sk-badges"><span class="sk-badge {"ok" if ai.activ() else ""}">Gemini: '
-        f'{"conectat" if ai.activ() else "offline"}</span><span class="sk-badge {"trust" if nokia.activ() else ""}">'
-        f'Nokia: {"conectat" if nokia.activ() else "simulat"}</span></div></div>')
+        f'{"conectat" if ai.activ() else "offline"}</span></div></div>')
 
     t_client, t_mester = _token("+40722000001"), _token("+40722000101")
     if not t_client or not t_mester:
@@ -44,14 +43,14 @@ def ecran():
     with col3:
         c.h('<div class="sk-h">Scenariul demo</div>')
         c.h(c.pasi([
-            ("Ana descrie problema", "„Curge apă de sub chiuvetă” + poză. Asistentul AI alege instalatorul.", ""),
-            (f"Bifează Urgent (+{config.PCT_URGENT})", "Ionel vede solicitarea prima, portocalie, pe hartă.", ""),
+            ("Agentul Anei", "„Vreau să renovez baia” devine 4 etape, cu cost și meseriile potrivite.", ""),
             ("Ionel trimite oferta", "Preț și oră din calendarul lui.", ""),
-            ("Ana compară și acceptă", "Trust Score, insigne Nokia, preț.", ""),
-            ("Ora confirmată, Ana plătește", "Banii rămân blocați în SKILLIO.", ""),
-            ("Ionel apasă „Am ajuns”", "Rețeaua confirmă sosirea la adresă.", ""),
-            ("Ana confirmă lucrarea", f"Banii ajung la Ionel, minus {config.PCT_COMISION} comision.", ""),
-            ("Recenzie + feedback în timp", "Dă ceasul înainte: 1 zi, 1 săptămână, 1 lună.", ""),
+            ("Ana plătește, banii se blochează", f"Plus {config.PCT_PROTECTIE} taxă de protecție (mediatori umani).", ""),
+            ("Ionel ajunge și reconfirmă prețul", "Poză + motiv. AI-ul dă o părere, Ana decide.", ""),
+            ("Ana poate refuza", f"Plătește doar deplasarea ({config.TAXA_DEPLASARE} lei).", ""),
+            ("Confirmare + 24 h", "Oricine poate deschide o dispută. Dă ceasul +1 zi: banii pleacă.", ""),
+            ("Chat fără numere", "Încearcă să scrii un număr: SKILLIO îl ascunde.", ""),
+            (f"SOS · {config.SOS_PRET} lei", "Apel video cu un meșter, înregistrat, cu dispută.", ""),
         ]))
         c.h(f'<div class="sk-cap">Ceasul aplicației: {timp.data_ora(timp.acum())}</div>')
         with st.container(horizontal=True):
