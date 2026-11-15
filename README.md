@@ -1,268 +1,277 @@
-# SKILLIO: platforma în care clientul nu riscă nimic
+# SKILLIO: the platform where the client risks nothing
 
-**Find skills. Build trust.** Meșteri pentru casă în Timișoara, cu banii blocați până când clientul confirmă că
-lucrarea e în regulă.
+**Find skills. Build trust.** Home repair professionals in Timișoara, with the money held in escrow until the client
+confirms the job is done right.
 
-Proiect pentru **UniHack 2026** (LigaAC, Politehnica Timișoara), tema **The Bloom**, track **Connected Communities**.
+Project for **UniHack 2026** (LigaAC, Politehnica University of Timișoara), theme **The Bloom**, track
+**Connected Communities**.
 
 ---
 
-## Problema
+## The problem
 
-Când chemi un meșter acasă, tot riscul e la tine:
+When you call a tradesperson to your home, all the risk is on you:
 
-1. **Plătești și lucrarea rămâne neterminată.** Banii pleacă înainte să vezi rezultatul.
-2. **Prețul crește la fața locului.** Meșterul ajunge, apa e deja oprită și nu mai poți spune nu.
-3. **Numărul tău ajunge la oricine**, iar când apare o problemă nu te ajută nimeni.
+1. **You pay and the job is left unfinished.** The money is gone before you see the result.
+2. **The price goes up on site.** The tradesperson arrives, the water is already shut off, and you can no longer say no.
+3. **Your phone number ends up with anyone**, and when something goes wrong, nobody helps you.
 
-Platformele din România (Meseriașul Meu, Daibau, OLX Servicii) te pun doar în legătură cu meșterul. De acolo ești
-pe cont propriu, iar meșterul plătește pentru fiecare client primit.
+Platforms in Romania (Meseriașul Meu, Daibau, OLX Servicii) only connect you with the tradesperson. From there you
+are on your own, and the tradesperson pays for every client they receive.
 
-## Soluția
+## The solution
 
-SKILLIO face legătura **și** protejează ambele părți până la final:
+SKILLIO makes the connection **and** protects both sides until the very end:
 
-| Ce face SKILLIO | De ce contează |
+| What SKILLIO does | Why it matters |
 |---|---|
-| **Banii stau blocați** (escrow) până confirmă amândoi, apoi încă 24 de ore | Plătești doar când ești mulțumit |
-| **Prețul se reconfirmă la fața locului**, cu poză și motiv. Gemini spune dacă e rezonabil, dar decide clientul | Dacă refuzi, primești banii înapoi și plătești doar 40 lei deplasarea |
-| **Numerele de telefon rămân private** în ambele sensuri; chatul ascunde automat telefoane, emailuri, WhatsApp | Totul rămâne în aplicație, unde ești protejat |
-| **Disputele le decide un om** (mediator SKILLIO), nu un AI. Și meșterul poate deschide o dispută | Încredere: un om ascultă ambele părți |
-| **SOS 45 lei**: un meșter real te ghidează video să închizi apa sau curentul | Ajutor în câteva minute la o urgență |
-| **Agentul AI** transformă o propoziție într-o renovare planificată, cu echipă programată | Clientul nu trebuie să știe ce meserii îi trebuie și în ce ordine |
-| **Meșterul nu plătește pentru clienți** | Plătește doar 10% dintr-o lucrare finalizată |
+| **The money is held in escrow** until both sides confirm, then for another 24 hours | You only pay when you are satisfied |
+| **The price is reconfirmed on site**, with a photo and a reason. Gemini says whether it is reasonable, but the client decides | If you refuse, you get your money back and pay only the 40 lei call-out fee |
+| **Phone numbers stay private** both ways; the chat automatically hides phone numbers, emails and WhatsApp | Everything stays in the app, where you are protected |
+| **Disputes are decided by a human** (a SKILLIO mediator), not by an AI. The tradesperson can open a dispute too | Trust: a person listens to both sides |
+| **SOS for 45 lei**: a real tradesperson guides you over video to shut off the water or the power | Help within minutes in an emergency |
+| **The AI agent** turns a single sentence into a planned renovation, with a scheduled team | The client does not need to know which trades are needed or in what order |
+| **Tradespeople do not pay for leads** | They pay only 10% of a completed job |
 
-Fiecare piesă există separat undeva în lume (de exemplu, Urban Company în India are taxă de inspecție cu drept de
-refuz, iar TaskRabbit în SUA ascunde numerele). Din ce am verificat noi, nimeni nu le pune împreună și nimeni nu
-reconfirmă prețul la fața locului, cu verificare AI și drept de refuz.
+Each piece exists separately somewhere in the world (for example, Urban Company in India charges an inspection fee
+with the right to refuse, and TaskRabbit in the US hides phone numbers). As far as we could check, nobody puts them
+together, and nobody reconfirms the price on site with AI verification and the right to refuse.
 
-**Legătura cu tema The Bloom:** încrederea crește cartier cu cartier. Pornim cu un singur cartier (Elisabetin) și 2-3
-meserii, iar fiecare lucrare bine făcută crește Trust Score-ul meșterului.
-
----
-
-## Cum funcționează
-
-```
-Client: descrie problema (text, poză, video sau voce)
-   │   Gemini: meseria potrivită, cauza probabilă, prețul estimat
-   ▼
-Meșterii din zonă trimit oferte  ──►  clientul alege după preț, Trust Score și recenzii
-   ▼
-Clientul plătește oferta + 5% taxă de protecție  ──►  BANII SE BLOCHEAZĂ (Solana devnet în demo)
-   ▼
-Meșterul ajunge și RECONFIRMĂ PREȚUL cu poză + motiv  ──►  Gemini: „rezonabil / de discutat / ridicat”
-   ├── clientul refuză: primește banii înapoi, meșterul păstrează 40 lei deplasarea
-   └── clientul acceptă: lucrarea începe (bani în plus doar cu acordul clientului)
-   ▼
-Meșterul marchează „gata”, clientul confirmă  ──►  banii mai stau blocați 24 de ore
-   ├── oricine deschide o dispută: un mediator uman decide pe baza pozelor, chatului și cronologiei
-   └── fără dispută: banii pleacă la meșter (minus 10% comision)
-   ▼
-Feedback după 1 zi, 1 săptămână și 1 lună  ──►  Trust Score (0-100)
-```
-
-Stările unei lucrări: `deschisa → acceptata → de_plata → programata → sosit → reconfirmare → in_lucru → gata →
-confirmata (24 h) → finalizata`, plus `disputa` și `anulata`.
-
-### Roluri
-
-- **Client**: Acasă (promisiunea „Tu nu riști nimic”), Agent AI, Cerere nouă, Chat, Profil, SOS.
-- **Meșter**: Cereri primite (urgentele primele), oferte, calendar, reconfirmarea prețului, lista de materiale
-  cu prețuri pe magazine, apeluri SOS.
-- **Admin / mediator**: panoul **Mediere** cu dispute (lucrări și SOS), dovezi, cronologie, decizie; statistici.
+**Link to The Bloom theme:** trust grows neighbourhood by neighbourhood. We start with a single neighbourhood
+(Elisabetin) and 2-3 trades, and every job done well raises the tradesperson's Trust Score.
 
 ---
 
-## Gemini: cum folosim AI-ul
+## How it works
 
-Gemini **ajută și explică**, dar nu decide niciodată în locul oamenilor: prețul îl acceptă clientul, disputele le
-decide un mediator uman. Dacă Gemini nu răspunde, aplicația merge mai departe pe reguli proprii.
+```
+Client: describes the problem (text, photo, video or voice)
+   │   Gemini: the right trade, the likely cause, the estimated price
+   ▼
+Nearby tradespeople send offers  ──►  the client chooses by price, Trust Score and reviews
+   ▼
+The client pays the offer + 5% protection fee  ──►  THE MONEY IS LOCKED (Solana devnet in the demo)
+   ▼
+The tradesperson arrives and RECONFIRMS THE PRICE with a photo + reason  ──►  Gemini: "reasonable / debatable / high"
+   ├── the client refuses: gets the money back, the tradesperson keeps the 40 lei call-out fee
+   └── the client accepts: work begins (extra money only with the client's consent)
+   ▼
+The tradesperson marks the job "done", the client confirms  ──►  the money stays locked for another 24 hours
+   ├── either side opens a dispute: a human mediator decides based on photos, chat and timeline
+   └── no dispute: the money goes to the tradesperson (minus 10% commission)
+   ▼
+Feedback after 1 day, 1 week and 1 month  ──►  Trust Score (0-100)
+```
 
-| Funcție | Ce face | Tehnică Gemini |
+Job states: `deschisa → acceptata → de_plata → programata → sosit → reconfirmare → in_lucru → gata →
+confirmata (24 h) → finalizata`, plus `disputa` and `anulata`
+(open → accepted → awaiting payment → scheduled → arrived → reconfirmation → in progress → done →
+confirmed → completed, plus dispute and cancelled).
+
+### Roles
+
+- **Client**: Home (the "You risk nothing" promise), AI Agent, New request, Chat, Profile, SOS.
+- **Tradesperson**: Incoming requests (urgent ones first), offers, calendar, price reconfirmation, materials list
+  with prices per store, SOS calls.
+- **Admin / mediator**: the **Mediation** panel with disputes (jobs and SOS), evidence, timeline, decision; statistics.
+
+---
+
+## Gemini: how we use AI
+
+Gemini **helps and explains**, but never decides on behalf of people: the client accepts the price, and disputes are
+decided by a human mediator. If Gemini does not respond, the app carries on using its own rules.
+
+| Feature | What it does | Gemini technique |
 |---|---|---|
-| **Diagnostic** | Din text, poză, **video** sau **mesaj vocal**: meseria, cauza probabilă, prețul, materialele | Multimodal (imagine, video, audio), JSON |
-| **Agentul clientului** | Explică problema, calculează costul și împarte lucrările mari în etape, în ordinea corectă | **Function calling** cu 5 unelte |
-| **„Cum am calculat”** | Arată fiecare calcul făcut de agent, cu sursele | Jurnalul apelurilor de unelte |
-| **O propoziție, o echipă întreagă** | „Baia renovată până pe 20 decembrie, buget 9000 lei”: agentul înțelege termenul și bugetul, alege meșterul pentru fiecare etapă (Trust Score + prima zi liberă), îi programează în ordine și verifică bugetul și termenul | Extragere structurată + logica platformei |
-| **Prețuri live** | Prețul de azi al materialelor la Dedeman, Hornbach și Leroy Merlin, cu linkuri | **Google Search grounding** |
-| **Lista meșterului** | Ce materiale îi trebuie pentru lucrare și unde e coșul cel mai ieftin | Google Search grounding |
-| **Părere despre preț** | La reconfirmarea de la fața locului: interval normal și verdict, din poza meșterului | Multimodal, JSON |
-| **Traducere în chat** | Clientul sau meșterul citesc mesajele în limba lor (EN, UK, HU, DE, IT) | Traducere în lot |
+| **Diagnosis** | From text, a photo, **video** or a **voice message**: the trade, the likely cause, the price, the materials | Multimodal (image, video, audio), JSON |
+| **Client agent** | Explains the problem, calculates the cost and splits large jobs into stages, in the correct order | **Function calling** with 5 tools |
+| **"How we calculated"** | Shows every calculation made by the agent, with sources | Tool call log |
+| **One sentence, a whole team** | "Bathroom renovated by 20 December, budget 9000 lei": the agent understands the deadline and budget, picks the tradesperson for each stage (Trust Score + first free day), schedules them in order and checks the budget and deadline | Structured extraction + platform logic |
+| **Live prices** | Today's material prices at Dedeman, Hornbach and Leroy Merlin, with links | **Google Search grounding** |
+| **Tradesperson's list** | Which materials the job needs and where the cheapest basket is | Google Search grounding |
+| **Price opinion** | During on-site reconfirmation: normal range and verdict, from the tradesperson's photo | Multimodal, JSON |
+| **Chat translation** | The client or tradesperson read messages in their own language (EN, UK, HU, DE, IT) | Batch translation |
 
-Uneltele agentului (în `services/unelte.py`):
+The agent's tools (in `services/unelte.py`):
 
-1. `tarif_manopera`: tarife de manoperă pe mp, bucată sau circuit (22 de lucrări, Timișoara 2026).
-2. `pret_materiale`: prețuri de materiale în variantele economic, mediu și premium, cu 10% pierderi la suprafețe.
-3. `pret_live_material`: prețul de azi, căutat pe Google, cu surse.
-4. `preturi_platforma`: mediana prețurilor acceptate efectiv pe SKILLIO pentru acea meserie.
-5. `taxe_skillio`: totalul clientului cu taxa de protecție, urgența și deplasarea.
+1. `tarif_manopera`: labour rates per sqm, per piece or per circuit (22 job types, Timișoara 2026).
+2. `pret_materiale`: material prices in budget, mid-range and premium variants, with 10% waste on surfaces.
+3. `pret_live_material`: today's price, searched on Google, with sources.
+4. `preturi_platforma`: the median of prices actually accepted on SKILLIO for that trade.
+5. `taxe_skillio`: the client's total including the protection fee, urgency surcharge and call-out fee.
 
-Modelul se alege din `.env` (`GEMINI_MODEL`). Dacă un model nu există sau e aglomerat, aplicația încearcă
-automat următorul (`gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-flash-latest` etc.).
+The model is set in `.env` (`GEMINI_MODEL`). If a model does not exist or is overloaded, the app automatically tries
+the next one (`gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-flash-latest`, etc.).
 
 ---
 
 ## Side quests
 
-| Side quest | Ce am făcut | Stare |
+| Side quest | What we did | Status |
 |---|---|---|
-| **Gemini** | Tot ce e descris mai sus: multimodal, function calling, Google Search grounding, agent | Folosit în demo |
-| **Solana** | Plata blocată (escrow) pe **devnet**: blocare, eliberare 90/10, returnare; tranzacțiile apar pe Solana Explorer (`services/solana.py`) | Folosit în demo |
-| **Auth0** | Login securizat cu `st.login` (`services/autentificare.py`, `.streamlit/secrets.toml`) | Implementat, opțional |
-| **ElevenLabs** | Butonul „Ascultă”: agentul citește explicația cu voce (`services/voce.py`) | Implementat, opțional |
-| **Tiger Data** | PostgreSQL în cloud prin `DATABASE_URL`, cu migrare din SQLite (`scripts/migreaza_in_postgres.py`) | Implementat; în demo folosim SQLite local, fiindcă e mai rapid |
-| **Vultr** | Docker + Caddy (HTTPS automat) și ghid pas cu pas în [PRODUCTIE.md](PRODUCTIE.md); poze în Vultr Object Storage (`services/stocare.py`) | Pregătit, **nepublicat** (vezi mai jos) |
-| **Living Labs** | Chestionar în aplicație și pagina „Ce e nou” (`views/comunitate.py`) | Implementat |
+| **Gemini** | Everything described above: multimodal, function calling, Google Search grounding, agent | Used in the demo |
+| **Solana** | Escrow payment on **devnet**: lock, 90/10 release, refund; transactions show up on Solana Explorer (`services/solana.py`) | Used in the demo |
+| **Auth0** | Secure login with `st.login` (`services/autentificare.py`, `.streamlit/secrets.toml`) | Implemented, optional |
+| **ElevenLabs** | The "Listen" button: the agent reads its explanation aloud (`services/voce.py`) | Implemented, optional |
+| **Tiger Data** | Cloud PostgreSQL via `DATABASE_URL`, with migration from SQLite (`scripts/migreaza_in_postgres.py`) | Implemented; the demo uses local SQLite because it is faster |
+| **Vultr** | Docker + Caddy (automatic HTTPS) and a step-by-step guide in [PRODUCTIE.md](PRODUCTIE.md); photos in Vultr Object Storage (`services/stocare.py`) | Ready, **not deployed** (see below) |
+| **Living Labs** | In-app survey and a "What's new" page (`views/comunitate.py`) | Implemented |
 
-### Despre deploy-ul pe Vultr
+### About the Vultr deployment
 
-Am vrut să publicăm aplicația pe **Vultr** (Cloud Compute, Frankfurt, imagine Docker). Tot ce trebuie pentru asta
-e în repo: `Dockerfile`, `docker-compose.yml`, `Caddyfile` (HTTPS automat cu Let's Encrypt) și pașii din
-[PRODUCTIE.md](PRODUCTIE.md). **Contul de Vultr nu a fost activat la timp** în timpul hackathonului, așa că nu am
-putut porni serverul. Pentru demo rulăm aplicația local, pe laptop, iar telefoanele se conectează prin aceeași
-rețea Wi-Fi. Odată activat contul, deploy-ul înseamnă trei comenzi:
+We wanted to publish the app on **Vultr** (Cloud Compute, Frankfurt, Docker image). Everything needed for that is in
+the repo: `Dockerfile`, `docker-compose.yml`, `Caddyfile` (automatic HTTPS with Let's Encrypt) and the steps in
+[PRODUCTIE.md](PRODUCTIE.md). **The Vultr account was not activated in time** during the hackathon, so we could not
+start the server. For the demo we run the app locally on a laptop, and the phones connect over the same Wi-Fi
+network. Once the account is activated, deployment takes three commands:
 
 ```bash
 git clone https://github.com/Petruse18/skillio_final.git && cd skillio_final
-nano .env                       # cheile + DOMENIU=skillio.exemplu.ro
+nano .env                       # the keys + DOMENIU=skillio.example.com
 docker compose up -d --build
 ```
 
 ---
 
-## Model de business
+## Business model
 
-- **10%** comision de la meșter, doar pe lucrări finalizate (fără taxe pe clienți primiți).
-- **5%** taxă de protecție plătită de client; din ea plătim mediatorii umani (ca o asigurare).
-- Pe o lucrare de 300 lei: **45 lei** venit, circa 6 lei procesarea plății. Chiar cu 20% dintre lucrări ajunse la
-  mediere, rămân circa 27 lei pe lucrare.
-- **SOS**: 45 lei, din care 35 lei merg la meșter.
-- Comparație: Airtasker 10-20%, Urban Company 8,5-25%.
-- **Lansare**: un cartier (Elisabetin), 2-3 meserii, apoi extindere cartier cu cartier.
+- **10%** commission from the tradesperson, only on completed jobs (no fees for leads received).
+- **5%** protection fee paid by the client; it funds the human mediators (like insurance).
+- On a 300 lei job: **45 lei** revenue, about 6 lei for payment processing. Even if 20% of jobs end up in mediation,
+  about 27 lei per job remain.
+- **SOS**: 45 lei, of which 35 lei go to the tradesperson.
+- Comparison: Airtasker 10-20%, Urban Company 8.5-25%.
+- **Launch**: one neighbourhood (Elisabetin), 2-3 trades, then expansion neighbourhood by neighbourhood.
 
-## Ce schimbăm pentru producție
+## What changes for production
 
-- **Plata**: escrow-ul trece printr-un procesator autorizat (Stripe Connect, Mangopay sau Lemonway), nu prin Solana
-  devnet, fără licență proprie de instituție de plată.
-- **Apelul SOS**: în demo, cameră video printr-un server Jitsi public. În producție, un serviciu WebRTC cu
-  înregistrare (Daily, Twilio Video), stocare în UE și ștergere automată la 30 de zile.
-- **GDPR**: consimțământ explicit pentru înregistrări, ștergere la 30 de zile, date stocate în UE.
-- **Problemă încă deschisă**: lucrările repetate făcute în afara platformei după prima întâlnire.
+- **Payment**: escrow goes through a licensed payment processor (Stripe Connect, Mangopay or Lemonway) instead of
+  Solana devnet, without needing our own payment institution licence.
+- **SOS call**: in the demo, video via a public Jitsi server. In production, a WebRTC service with recording
+  (Daily, Twilio Video), EU storage and automatic deletion after 30 days.
+- **GDPR**: explicit consent for recordings, deletion after 30 days, data stored in the EU.
+- **Still an open problem**: repeat jobs done outside the platform after the first meeting.
 
 ---
 
-## Pornire rapidă
+## Quick start
 
-Ai nevoie de **Python 3.10+**.
+You need **Python 3.10+**.
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate            # Mac/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-copy .env.example .env            # apoi completează cheile (Mac/Linux: cp)
+copy .env.example .env            # then fill in the keys (Mac/Linux: cp)
 streamlit run app.py
 ```
 
-Pe Windows poți folosi și `porneste.bat`. La prima pornire se creează `data/skillio.db` cu date demo.
+On Windows you can also use `porneste.bat`. On first launch, `data/skillio.db` is created with demo data.
 
-| Adresă | Ce vezi |
+| Address | What you see |
 |---|---|
-| http://localhost:8501 | aplicația, cu ecranul de intrare |
-| http://localhost:8501/?mod=prezentare | **modul de prezentare**: clientul și meșterul unul lângă altul, plus butoanele de timp (+1 zi etc.) |
+| http://localhost:8501 | the app, with the sign-in screen |
+| http://localhost:8501/?mod=prezentare | **presentation mode**: the client and the tradesperson side by side, plus the time buttons (+1 day, etc.) |
 
-**Pe două telefoane:** pornește cu `streamlit run app.py --server.address 0.0.0.0`, apoi deschide pe telefoane
-adresa „Network URL” din terminal (aceeași rețea Wi-Fi sau hotspot). Fără HTTPS, microfonul din browser poate fi
-blocat pe telefon; încărcarea pozelor și a video-urilor merge.
+**On two phones:** start with `streamlit run app.py --server.address 0.0.0.0`, then open the "Network URL" shown in
+the terminal on the phones (same Wi-Fi network or hotspot). Without HTTPS, the browser microphone may be blocked on
+phones; photo and video uploads still work.
 
-### Conturi demo
+### Demo accounts
 
-| Cont | Telefon | Rol |
+| Account | Phone | Role |
 |---|---|---|
 | Ana Popescu | +40722000001 | client, Elisabetin |
-| Ionel Mureșan | +40722000101 | instalator și centrale |
-| Admin | +40700000000 | mediere, statistici, controale demo |
+| Ionel Mureșan | +40722000101 | plumber and boiler technician |
+| Admin | +40700000000 | mediation, statistics, demo controls |
 
-### Chei (în `.env`, care nu se urcă niciodată pe GitHub)
+### Keys (in `.env`, which is never pushed to GitHub)
 
-| Variabilă | Pentru ce | Fără ea |
+| Variable | Used for | Without it |
 |---|---|---|
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | tot ce ține de AI | reguli proprii (cuvinte cheie, tabele de prețuri) |
-| `SOLANA_SECRET_KEY` | escrow pe devnet (`python -m scripts.solana_portofel`) | plată simulată |
-| `ELEVENLABS_API_KEY` | vocea agentului | vocea browserului |
-| `DATABASE_URL` | PostgreSQL (Tiger Data) | SQLite local (recomandat pentru demo) |
-| `DEMO_LOGIN`, `MOD_PREZENTARE` | butoanele de cont demo și modul de prezentare | – |
-| `DOMENIU` | domeniul pentru HTTPS pe server | – |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | everything AI-related | built-in rules (keywords, price tables) |
+| `SOLANA_SECRET_KEY` | escrow on devnet (`python -m scripts.solana_portofel`) | simulated payment |
+| `ELEVENLABS_API_KEY` | the agent's voice | the browser's voice |
+| `DATABASE_URL` | PostgreSQL (Tiger Data) | local SQLite (recommended for the demo) |
+| `DEMO_LOGIN`, `MOD_PREZENTARE` | demo account buttons and presentation mode | – |
+| `DOMENIU` | the domain for HTTPS on the server | – |
 
-Auth0 se configurează în `.streamlit/secrets.toml` (și acesta rămâne doar local).
-
----
-
-## Scenariul demo (3 minute)
-
-1. **Agentul**: Ana apasă exemplul „Baia renovată până pe 20 decembrie, buget 9000 lei”. Apar 4 etape, costul,
-   „Cum am calculat” (cu prețuri live) și **echipa programată**: instalator, electrician, faianțar, zugrav, cu zile
-   în ordinea corectă și verificarea bugetului.
-2. **Plata blocată**: Ionel trimite oferta, Ana plătește. Banii se blochează (+5% protecție, vizibil).
-3. **Reconfirmarea**: Ionel ajunge, face poză și cere 260 lei în loc de 200. Gemini: „preț rezonabil”. Ana poate
-   accepta sau refuza și plăti doar 40 lei.
-4. **Chat**: Ana scrie un număr de telefon, iar SKILLIO îl ascunde.
-5. **Confirmare + 24 h**: ambii confirmă, banii mai stau 24 h. Cu o dispută deschisă, adminul decide la Mediere.
-6. **SOS 45 lei**: apel video cu un meșter real, înregistrat cu acord.
+Auth0 is configured in `.streamlit/secrets.toml` (which also stays local only).
 
 ---
 
-## Tehnologii
+## Demo scenario (3 minutes)
 
-- **Python 3.11 + Streamlit 1.67**, interfață gândită pentru telefon (navigare jos, carduri, temă proprie).
-- **SQLite** (demo) sau **PostgreSQL** (Tiger Data) cu `psycopg_pool`.
-- **Gemini** prin `google-genai`: multimodal, function calling, Google Search grounding.
+1. **The agent**: Ana taps the example "Bathroom renovated by 20 December, budget 9000 lei". Four stages appear, the
+   cost, "How we calculated" (with live prices) and the **scheduled team**: plumber, electrician, tiler, painter, on
+   days in the correct order, with the budget check.
+2. **Escrow payment**: Ionel sends an offer, Ana pays. The money is locked (+5% protection, shown on screen).
+3. **Reconfirmation**: Ionel arrives, takes a photo and asks for 260 lei instead of 200. Gemini: "reasonable price".
+   Ana can accept, or refuse and pay only 40 lei.
+4. **Chat**: Ana types a phone number, and SKILLIO hides it.
+5. **Confirmation + 24 h**: both confirm, the money stays locked for 24 h. If a dispute is opened, the admin decides
+   in Mediation.
+6. **SOS for 45 lei**: a video call with a real tradesperson, recorded with consent.
+
+---
+
+## Technologies
+
+- **Python 3.11 + Streamlit 1.67**, a mobile-first interface (bottom navigation, cards, custom theme).
+- **SQLite** (demo) or **PostgreSQL** (Tiger Data) with `psycopg_pool`.
+- **Gemini** via `google-genai`: multimodal, function calling, Google Search grounding.
 - **Solana devnet** (`solders`), **Auth0**, **ElevenLabs**.
-- **Docker + Caddy** pentru server, gata pentru Vultr.
-- Aproximativ **5.000 de linii de Python** efectiv și 400 de linii de CSS.
+- **Docker + Caddy** for the server, ready for Vultr.
+- About **5,000 lines of actual Python** and 400 lines of CSS.
 
-## Structura proiectului
+## Project structure
 
 ```
-app.py                  intrarea, navigarea de jos, sincronizarea între telefoane
-core/config.py          regulile de business (comision, taxe, SOS, sloturi), meserii, cartiere
-core/db.py              baza de date (SQLite sau PostgreSQL)
-core/logica.py          tot fluxul: cereri, oferte, plată blocată, reconfirmare, dispute, SOS, echipa agentului
+app.py                  entry point, bottom navigation, sync between phones
+core/config.py          business rules (commission, fees, SOS, time slots), trades, neighbourhoods
+core/db.py              database (SQLite or PostgreSQL)
+core/logica.py          the whole flow: requests, offers, escrow, reconfirmation, disputes, SOS, the agent's team
 core/trust.py           Trust Score
-core/seed.py            datele demo
-core/timp.py            ceasul aplicației (se poate da înainte pentru demo)
-services/ai.py          Gemini: diagnostic, agent, părere despre preț, prețuri live, traducere
-services/unelte.py      uneltele (function calling) cu care agentul calculează costurile
-services/solana.py      escrow pe Solana devnet
+core/seed.py            demo data
+core/timp.py            the app clock (can be moved forward for the demo)
+services/ai.py          Gemini: diagnosis, agent, price opinion, live prices, translation
+services/unelte.py      the tools (function calling) the agent uses to calculate costs
+services/solana.py      escrow on Solana devnet
 services/autentificare.py, voce.py, stocare.py, mesaje_externe.py, geo.py
-views/                  ecranele: client, meșter, lucrare, asistent (agent), materiale, sos, admin (mediere),
-                        comun (intrare, chat, profil), comunitate, prezentare
-ui/                     componente și stiluri (tokens.css, modern.css, streamlit.css)
-scripts/                migrare în PostgreSQL, backup, portofel Solana, urcarea pozelor în cloud
-pitch/                  scriptul demo, modelul de business, textul de înscriere
-Dockerfile, docker-compose.yml, Caddyfile, PRODUCTIE.md   deploy pe server (Vultr)
+views/                  screens: client, tradesperson, job, assistant (agent), materials, SOS, admin (mediation),
+                        common (sign-in, chat, profile), community, presentation
+ui/                     components and styles (tokens.css, modern.css, streamlit.css)
+scripts/                PostgreSQL migration, backup, Solana wallet, uploading photos to the cloud
+pitch/                  demo script, business model, registration text
+Dockerfile, docker-compose.yml, Caddyfile, PRODUCTIE.md   server deployment (Vultr)
 ```
 
 ## Trust Score (0-100)
 
-Calculat doar din activitatea reală din aplicație, nu din popularitate.
+Calculated only from real activity in the app, not from popularity.
 
-| Factor | Puncte |
+| Factor | Points |
 |---|---|
-| Evaluarea clienților | 25 |
-| Lucrarea ține (feedback la 1 zi, 1 săptămână, 1 lună) | 20 |
-| Programări respectate | 15 |
-| Punctualitate | 10 |
-| Lucrări finalizate | 10 |
-| Identitate verificată | 10 |
-| Fără reclamații confirmate | 10 |
+| Client ratings | 25 |
+| The work lasts (feedback after 1 day, 1 week, 1 month) | 20 |
+| Appointments kept | 15 |
+| Punctuality | 10 |
+| Completed jobs | 10 |
+| Verified identity | 10 |
+| No confirmed complaints | 10 |
 
-Un factor fără date primește jumătate din puncte. Niveluri: 90+ Excelent, 75+ Foarte bun, 60+ Bun, altfel În creștere.
+A factor with no data gets half of its points. Levels: 90+ Excellent, 75+ Very good, 60+ Good, otherwise Growing.
 
 ---
 
-## Echipa
+## Team
 
-*(completați numele membrilor echipei și rolurile)*
+| Name | Role |
+|---|---|
+| Popa Sebastian Petru | Team leader |
+| Petruse Rares Stelian | Member |
+| Hariton Vlad Mihai | Member |
+| Adascalului Sebastian | Member |
 
-Ești la început cu codul? [GHID.md](GHID.md) explică proiectul pas cu pas.
+New to the code? [GHID.md](GHID.md) (in Romanian) explains the project step by step.
