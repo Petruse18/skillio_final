@@ -1,18 +1,18 @@
 """Ecrane comune: intrare în cont, ghid, notificări, mesaje, chat, profilul public al meșterului, contul meu."""
 import streamlit as st
- 
+
 from core import config, db, logica, timp, trust
 from core.logica import Eroare
 from services import autentificare as autentificare_srv
-from services import geo, solana, stocare
+from services import ai, geo, solana, stocare
 from ui import comp as c
- 
+
 # ---------------------------------------------------------------------------
 # Intrare în cont (fără parolă: numărul e verificat de rețea)
 # ---------------------------------------------------------------------------
 DEMO = [("Ana · client", "+40722000001"), ("Ionel · meșter", "+40722000101"), ("Admin", "+40700000000")]
- 
- 
+
+
 def _logheaza(uid):
     token = logica.sesiune_noua(uid)
     st.query_params.clear()
@@ -20,14 +20,14 @@ def _logheaza(uid):
     st.query_params["p"] = "acasa"
     st.session_state.pop("istoric", None)
     st.rerun()
- 
- 
+
+
 def autentificare():
     c.h(f'<div class="sk-col" style="align-items:center;text-align:center;padding:18px 0 4px">'
         f'{c.logo(72)}<div style="margin-top:6px">{c.wordmark(34)}</div>'
         f'<div class="sk-b" style="color:var(--sk-muted)">{config.SLOGAN}<br>Meșteri de încredere din '
         f'{config.ORAS}, cu plata blocată până confirmi.</div></div>')
- 
+
     if autentificare_srv.activ():
         if st.button("Intră în cont", type="primary", width="stretch", key="auth0_btn", icon=":material/login:"):
             autentificare_srv.intra()
@@ -42,8 +42,8 @@ def autentificare():
         st.space("small")
         st.caption("Mod demo, pentru prezentare (se oprește cu DEMO_LOGIN=0)")
     _intrare_demo()
- 
- 
+
+
 def _intrare_demo():
     tab_in, tab_nou = st.tabs(["Intră cu telefonul", "Cont nou"])
     with tab_in:
@@ -64,11 +64,11 @@ def _intrare_demo():
                 if st.button(et, key=f"demo_{t}", width="stretch"):
                     uid, _, _ = logica.intra(t)
                     _logheaza(uid)
- 
+
     with tab_nou:
         _formular_cont("reg")
- 
- 
+
+
 def _formular_cont(k, info=None):
     """Formularul de cont nou. Cu info (de la Auth0), contul se leagă de login-ul Auth0."""
     info = info or {}
@@ -94,8 +94,8 @@ def _formular_cont(k, info=None):
             _logheaza(uid)
         except Eroare as e:
             st.error(str(e))
- 
- 
+
+
 def profil_nou():
     """Prima intrare prin Auth0: omul e logat, dar încă nu are cont SKILLIO."""
     i = autentificare_srv.info()
@@ -105,8 +105,8 @@ def profil_nou():
     _formular_cont("auth", i)
     if st.button("Ieși", key="danger_auth_iesi"):
         autentificare_srv.iesi()
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Ghid interactiv
 # ---------------------------------------------------------------------------
@@ -164,8 +164,8 @@ FAQ = [
     ("Cum verificați meșterii?", "Actul de identitate e verificat de echipa SKILLIO, iar Trust Score-ul vine "
                                  "doar din lucrări reale. Numerele de telefon rămân ascunse în ambele sensuri."),
 ]
- 
- 
+
+
 def ghid(u):
     pasi = GHID["mester" if u["rol"] == "mester" else "client"]
     i = st.session_state.setdefault("ghid_pas", 0)
@@ -199,8 +199,8 @@ def ghid(u):
     with st.expander("Întrebări frecvente"):
         for q, a in FAQ:
             st.markdown(f"**{q}**  \n{a}")
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Notificări
 # ---------------------------------------------------------------------------
@@ -216,8 +216,8 @@ def notificari(u):
             if n["lucrare_id"] and st.button("Deschide", key=f"link_n{n['id']}", type="tertiary"):
                 c.go("lucrare", n["lucrare_id"])
     logica.marcheaza_notificari(u["id"])
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Mesaje și chat
 # ---------------------------------------------------------------------------
@@ -238,8 +238,8 @@ def mesaje(u):
                 f'</div></div>')
             if st.button("Deschide conversația", key=f"conv{l['id']}", width="stretch"):
                 c.go("chat", l["id"])
- 
- 
+
+
 def chat(u, lid):
     l = logica.lucrare(int(lid))
     if not l or u["id"] not in (l["client_id"], l["mester_id"]):
@@ -250,15 +250,33 @@ def chat(u, lid):
     c.h(f'<div class="sk-between"><span class="sk-cap">{c.esc(l["titlu"])}</span>{c.badge_status(l["status"])}</div>')
     if st.button("Vezi lucrarea", key="link_vezi_lucr", type="tertiary"):
         c.go("lucrare", l["id"])
+    limba = st.selectbox("Limba chatului", list(ai.LIMBI), format_func=lambda k: f"Citesc mesajele în: {ai.LIMBI[k]}",
+                         key="limba_chat", label_visibility="collapsed")
+    msgs = logica.mesaje(l["id"])
+    trad = st.session_state.setdefault("trad_chat", {})
+    if limba != "ro":
+        lipsa = [m for m in msgs if m["autor_id"] not in (None, u["id"]) and m["text"] and (m["id"], limba) not in trad]
+        if lipsa:
+            try:
+                for m, t in zip(lipsa, ai.traduce([m["text"] for m in lipsa], limba)):
+                    trad[(m["id"], limba)] = t
+            except Exception:  # noqa: BLE001
+                for m in lipsa:
+                    trad[(m["id"], limba)] = m["text"]
     bule = []
-    for m in logica.mesaje(l["id"]):
+    for m in msgs:
         poza = (f'<img src="{c.img_uri(m["poza"])}" style="max-width:100%;border-radius:10px;display:block;'
                 f'margin-bottom:4px">' if m["poza"] else "")
         if m["autor_id"] is None:
             bule.append(f'<div class="sk-bubble sys">{c.ico("lock", 12)} {c.esc(m["text"])}</div>')
         else:
             cls = "me" if m["autor_id"] == u["id"] else "them"
-            bule.append(f'<div class="sk-bubble {cls}">{poza}{c.esc(m["text"])}'
+            tr = trad.get((m["id"], limba)) if cls == "them" and limba != "ro" else None
+            corp = c.esc(m["text"])
+            if tr and tr.strip() != (m["text"] or "").strip():
+                corp = (f'{c.esc(tr)}<div style="font-size:11px;opacity:.65;margin-top:3px">'
+                        f'{c.ico("sparkles", 11)} tradus de Gemini · „{c.esc(m["text"])}”</div>')
+            bule.append(f'<div class="sk-bubble {cls}">{poza}{corp}'
                         f'<div style="font-size:10px;opacity:.7;margin-top:2px">{timp.ora(m["creat_la"])}</div></div>')
     with st.container(height=430, key="chat_box", autoscroll=True):
         c.h('<div class="sk-col" style="gap:8px">' + "".join(bule) + "</div>")
@@ -275,8 +293,8 @@ def chat(u, lid):
         if alt:
             logica.notifica(alt["id"], f"Mesaj nou de la {u['nume']}: {text[:50]}", l["id"])
         st.rerun()
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Profilul public al meșterului (văzut de client)
 # ---------------------------------------------------------------------------
@@ -292,7 +310,7 @@ def profil_mester(u, mid, vizitator=True):
     c.h(f'<div class="sk-row top">{c.avatar(m, True)}<div class="sk-grow"><div class="sk-title">{c.esc(m["nume"])}'
         f'</div><div class="sk-cap">{c.esc(meserii)}</div><div class="sk-cap">{c.ico("pin", 12)} {c.esc(m["cartier"])}'
         f' · lucrează pe o rază de {m["raza_km"]:.0f} km</div></div></div>')
- 
+
     # Trust Score
     programate = next(f for f in t["factori"] if f["cheie"] == "programari")
     with st.container(key="card_trust"):
@@ -305,7 +323,7 @@ def profil_mester(u, mid, vizitator=True):
                     ("Recenzii verificate", t["nr_recenzii"])]))
         with st.expander("Cum se calculează scorul"):
             c.h(c.factori_trust(t))
- 
+
     # Cât rezistă lucrările
     durab = db.q("SELECT etapa, AVG(ok) AS p, COUNT(*) AS n FROM feedback WHERE mester_id = ? AND ok IS NOT NULL "
                  "GROUP BY etapa", (m["id"],))
@@ -317,7 +335,7 @@ def profil_mester(u, mid, vizitator=True):
                        if k in d)
         c.h(f'<div class="sk-card flat"><div class="sk-label">Cât rezistă lucrările</div><div class="sk-bars">{bare}'
             f'</div><div class="sk-cap">Procentul clienților care spun că lucrarea e încă în regulă.</div></div>')
- 
+
     if m["despre"]:
         c.h(f'<div class="sk-col" style="gap:4px"><div class="sk-label">Despre</div><div class="sk-b">'
             f'{c.esc(m["despre"])}</div></div>')
@@ -328,7 +346,7 @@ def profil_mester(u, mid, vizitator=True):
         + c.kv([("Experiență", f'{m["experienta_ani"]} ani'),
                 ("Tarif orientativ", f'{m["tarif_ora"]} lei/oră' if m["tarif_ora"] else "la ofertă"),
                 ("Zonă", f'{m["cartier"]} + {m["raza_km"]:.0f} km')]) + "</div>")
- 
+
     libere = logica.sloturi_libere(m["id"])[:6]
     if m["disponibil"] and libere:
         sl = "".join(f'<span class="sk-chip">{timp.zi_frumos(x, True)} {x:%H:%M}</span>' for x in libere)
@@ -336,7 +354,7 @@ def profil_mester(u, mid, vizitator=True):
             f'<div class="sk-chips">{sl}</div></div>')
     elif not m["disponibil"]:
         c.alerta("Meșterul nu primește lucrări noi în acest moment.", "escrow", "clock")
- 
+
     port = logica.portofoliu(m["id"])
     if port:
         c.h('<div class="sk-label">Lucrări anterioare</div>')
@@ -344,7 +362,7 @@ def profil_mester(u, mid, vizitator=True):
                        f'style="width:200px;height:140px"><div class="sk-cap" style="margin-top:4px">'
                        f'{c.esc(p["descriere"])}</div></div>' for p in port)
         c.h(f'<div class="sk-hscroll">{imgs}</div>')
- 
+
     rec = logica.recenzii_mester(m["id"], 6)
     medii = logica.medii_criterii(m["id"])
     if rec:
@@ -361,7 +379,7 @@ def profil_mester(u, mid, vizitator=True):
                 f'{c.esc(r["client_nume"].split()[0])}</b><span class="sk-cap">{timp.de_cand(r["raspuns_la"])}</span>'
                 f'</div><div>{c.stele(r["nota"])} <span class="sk-cap">{c.esc(r["titlu"])}</span></div>{com}'
                 f'<div class="sk-badges">{tine}</div></div>')
- 
+
     if vizitator and u["rol"] == "client":
         st.space("small")
         if st.button("Cere ofertă de la " + m["nume"].split()[0], type="primary", width="stretch", key="cere_oferta",
@@ -371,8 +389,8 @@ def profil_mester(u, mid, vizitator=True):
             c.go("solicitare")
         with st.expander("Raportează acest profil"):
             _form_raport(u, None, m["id"], config.MOTIVE_RAPORT_CLIENT, "rp_prof")
- 
- 
+
+
 def _form_raport(u, lid, vizat, motive, key):
     motiv = st.selectbox("Motiv", motive, key=f"{key}_motiv")
     det = st.text_area("Detalii", key=f"{key}_det", height=80)
@@ -380,8 +398,8 @@ def _form_raport(u, lid, vizat, motive, key):
         logica.raporteaza(lid, u["id"], vizat, motiv, det)
         c.toast("Raport trimis. Echipa SKILLIO îl verifică.")
         st.rerun()
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Contul meu
 # ---------------------------------------------------------------------------
@@ -398,7 +416,7 @@ def cont(u):
                 c.h(c.factori_trust(t))
             if st.button("Vezi profilul public", key="link_pub", type="tertiary"):
                 c.go("mester", u["id"])
- 
+
     with st.expander("Date personale", expanded=False):
         nume = st.text_input("Nume", u["nume"], key="ed_nume")
         cartier = st.selectbox("Cartier", list(config.CARTIERE), index=list(config.CARTIERE).index(u["cartier"])
@@ -414,7 +432,7 @@ def cont(u):
             logica.actualizeaza_profil(u["id"], **camp)
             c.toast("Profil salvat.")
             st.rerun()
- 
+
     if u["rol"] == "mester":
         with st.expander("Profil profesional", expanded=False):
             meserii = st.multiselect("Meserii și specializări", list(config.MESERII), logica.meserii_lista(u),
@@ -463,8 +481,8 @@ def cont(u):
                 logica.actualizeaza_profil(u["id"], act_poza=logica.salveaza_poza(act, "act"), act_status="in_asteptare")
                 c.toast("Document trimis la verificare.")
                 st.rerun()
- 
- 
+
+
     with st.container(horizontal=True):
         if st.button("Reia ghidul", key="reia_ghid", width="stretch", icon=":material/school:"):
             st.session_state.ghid_pas = 0
@@ -483,4 +501,3 @@ def cont(u):
         if autentificare_srv.logat():
             autentificare_srv.iesi()
         st.rerun()
- 

@@ -213,17 +213,19 @@ def solicitare(u):
                             "azi-dimineață, pe jos e o baltă.", key="sol_text", height=110,
                             label_visibility="collapsed")
         foto = st.file_uploader("Adaugă o poză (opțional, ajută mult)", type=["jpg", "jpeg", "png"], key="sol_foto")
+        media = c.media_client("sol")
         if st.button("Analizează cu AI", type="primary", width="stretch", key="sol_analiza", icon=":material/auto_awesome:",
-                     disabled=not (text or "").strip() and foto is None):
+                     disabled=not (text or "").strip() and foto is None and not media):
             with st.spinner("Asistentul analizează problema…"):
-                d = ai.diagnosticheaza(text, foto.getvalue() if foto else None, foto.type if foto else "image/jpeg")
+                d = ai.diagnosticheaza(text or "(vezi înregistrarea)", foto.getvalue() if foto else None,
+                                       foto.type if foto else "image/jpeg", media)
             if st.session_state.get("sol_meserie") and tinta:
                 mt = logica.user(tinta)
                 if d["meserie"] not in logica.meserii_lista(mt):
                     d["meserie"] = st.session_state["sol_meserie"]
             st.session_state["sol_diag"] = d
             st.session_state["sol_poza"] = logica.salveaza_poza(foto, "sol") if foto else None
-            st.session_state["sol_descriere"] = text
+            st.session_state["sol_descriere"] = text or d.get("descriere", "")
             st.rerun()
         st.caption("Asistentul te ajută să alegi meseria, dar evaluarea finală o face meșterul.")
         return

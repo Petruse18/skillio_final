@@ -1,15 +1,15 @@
 """Panoul echipei SKILLIO: rapoarte și dispute, bani blocați, comision, controale pentru prezentare."""
 import json
- 
+
 import streamlit as st
- 
+
 from views import comunitate
- 
+
 from core import config, db, logica, timp
 from services import ai, autentificare, mesaje_externe, solana, stocare, voce
 from ui import comp as c
- 
- 
+
+
 def panou(u):
     c.h('<div class="sk-title">Mediere</div><div class="sk-cap">Echipa SKILLIO. Fiecare dispută o decide un om, '
         'pe baza pozelor, a chatului, a cronologiei și a înregistrărilor.</div>')
@@ -23,7 +23,7 @@ def panou(u):
         f'({config.COMISION:.0%})</span></div>'
         f'<div class="sk-stat"><span class="v">{s["mesteri"]}</span><span class="l">Meșteri</span></div>'
         f'<div class="sk-stat"><span class="v">{s["utilizatori"]}</span><span class="l">Clienți</span></div></div>')
- 
+
     _sos_dispute()
     deschise = logica.rapoarte("deschis")
     c.h(f'<div class="sk-label">Dispute și rapoarte ({len(deschise)})</div>')
@@ -56,7 +56,7 @@ def panou(u):
                     st.rerun()
             if r["lucrare_id"] and st.button("Vezi lucrarea", key=f"link_rl{r['id']}", type="tertiary"):
                 c.go("lucrare", r["lucrare_id"])
- 
+
     acte = db.q("SELECT * FROM utilizatori WHERE act_status = 'in_asteptare'")
     if acte:
         c.h(f'<div class="sk-label">Documente de verificat ({len(acte)})</div>')
@@ -69,11 +69,11 @@ def panou(u):
                 if st.button("Marchează verificat", key=f"act_ok{m['id']}", type="primary", width="stretch"):
                     logica.actualizeaza_profil(m["id"], act_status="verificat")
                     st.rerun()
- 
+
     _integrari()
     with st.expander("Living Labs: ce spun oamenii"):
         comunitate.rezultate()
- 
+
     if not (config.MOD_PREZENTARE or config.DEMO_LOGIN):
         _toate_lucrarile()
         return
@@ -101,10 +101,10 @@ def panou(u):
                     db.reseteaza()
                     st.query_params.clear()
                     st.rerun()
- 
+
     _toate_lucrarile()
- 
- 
+
+
 def _toate_lucrarile():
     with st.expander("Toate lucrările"):
         for l in db.q("SELECT l.*, a.nume AS cn, b.nume AS mn FROM lucrari l JOIN utilizatori a ON a.id = l.client_id "
@@ -113,8 +113,8 @@ def _toate_lucrarile():
                       (timp.iso(timp.acum().replace(hour=0)),)):
             st.markdown(f"**#{l['id']} {l['titlu']}** · {logica.STATUS[l['status']][0]} · {l['cn']}"
                         f"{' → ' + l['mn'] if l['mn'] else ''}")
- 
- 
+
+
 def _integrari():
     stari = [("Login Auth0", autentificare.activ(), "securizat" , "doar intrare demo"),
              ("Bază de date", db.PG, "PostgreSQL", "SQLite local"),
@@ -156,8 +156,8 @@ def _integrari():
         if st.session_state.get("_backup"):
             st.download_button("Descarcă backup-ul", st.session_state["_backup"], file_name="skillio-backup.json",
                                mime="application/json", key="adm_backup_dl")
- 
- 
+
+
 def _sos_dispute():
     rows = db.q("SELECT * FROM sos WHERE status = 'disputa' ORDER BY id DESC")
     if not rows:
@@ -179,4 +179,3 @@ def _sos_dispute():
                 if st.button("Returnează clientului", type="primary", key=f"sos_ok{s_['id']}", width="stretch"):
                     logica.rezolva_sos(s_["id"], True, rez)
                     st.rerun()
- 

@@ -12,7 +12,7 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecor
 .sk p { margin: 0; }
 .stMarkdown p { font-size: 15px; }
 h1, h2, h3 { font-family: var(--sk-font) !important; letter-spacing: -.02em; color: var(--sk-ink); }
- 
+
 /* Butoane */
 .stButton > button, .stFormSubmitButton > button, .stLinkButton > a, .stDownloadButton > button {
   min-height: var(--sk-tap); border-radius: var(--sk-r-md) !important; font-weight: 700 !important;
@@ -34,7 +34,7 @@ h1, h2, h3 { font-family: var(--sk-font) !important; letter-spacing: -.02em; col
 [class*="st-key-urg"] button[kind="primary"] { background: var(--sk-urgent-fill) !important; }
 [class*="st-key-link"] button { min-height: 32px; padding: 2px 4px !important; color: var(--sk-primary) !important; }
 [class*="st-key-link"] button p { font-size: 14px !important; }
- 
+
 /* Câmpuri */
 .stTextInput input, .stNumberInput input, .stTextArea textarea, [data-baseweb="select"] > div, .stDateInput input {
   border-radius: var(--sk-r-md) !important; background: var(--sk-surface) !important; font-size: 15px !important; color: var(--sk-ink) !important;
@@ -49,7 +49,7 @@ h1, h2, h3 { font-family: var(--sk-font) !important; letter-spacing: -.02em; col
 [data-testid="stFileUploaderDropzone"] { border-radius: var(--sk-r-md); border: 2px dashed var(--sk-line); background: var(--sk-surface); }
 [data-testid="stExpander"] details { border-radius: var(--sk-r-lg) !important; border-color: var(--sk-line) !important; background: var(--sk-surface); }
 [data-baseweb="tag"] { background: var(--sk-primary-soft) !important; color: var(--sk-primary) !important; }
- 
+
 /* Containere-card: orice container cu cheie care începe cu „card” */
 [class*="st-key-card"] {
   background: var(--sk-surface); border: 1px solid var(--sk-line); border-radius: var(--sk-r-lg);
@@ -58,11 +58,11 @@ h1, h2, h3 { font-family: var(--sk-font) !important; letter-spacing: -.02em; col
 [class*="st-key-cardurg"] { border-color: var(--sk-urgent-fill); }
 [class*="st-key-cardsel"] { box-shadow: 0 0 0 2px var(--sk-primary), var(--sk-shadow); }
 [class*="st-key-cardflat"] { box-shadow: none; }
- 
+
 /* Bara de sus */
 [class*="st-key-appbar"] { gap: 6px; margin-bottom: 2px; }
 [class*="st-key-appbar"] .stButton > button { width: 40px; min-height: 40px; border-radius: 50% !important; background: var(--sk-surface-2) !important; }
- 
+
 /* Navigarea de jos */
 .st-key-nav {
   position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: min(440px, 100%); z-index: 999;
@@ -82,7 +82,7 @@ h1, h2, h3 { font-family: var(--sk-font) !important; letter-spacing: -.02em; col
   background: var(--sk-primary) !important; color: var(--sk-on-primary); border-radius: 50%; padding: 10px; margin-top: -22px;
   box-shadow: var(--sk-shadow);
 }
- 
+
 /* Diverse */
 [data-testid="stImage"] img { border-radius: var(--sk-r-md); }
 iframe { border-radius: var(--sk-r-lg); }
@@ -92,7 +92,7 @@ iframe { border-radius: var(--sk-r-lg); }
 .stTabs [aria-selected="true"] p { color: var(--sk-primary); }
 .stTabs [data-baseweb="tab-highlight"] { background: var(--sk-primary) !important; }
 [data-testid="stMetricValue"] { font-weight: 800; }
- 
+
 /* Modul de prezentare: telefoane simulate */
 .st-key-telefoane iframe, [class*="st-key-tel_"] iframe {
   border: 12px solid #101614 !important; border-radius: 44px !important; box-shadow: 0 30px 60px -30px rgba(0,0,0,.6);
@@ -121,9 +121,8 @@ iframe { border-radius: var(--sk-r-lg); }
 [class*="st-key-cardflat_top_"] { flex-wrap: nowrap !important; align-items: center; padding: 10px 12px; }
 [class*="st-key-cardflat_top_"] > div:first-child { flex: 1 1 auto !important; width: auto !important; min-width: 0; }
 [class*="st-key-cardflat_top_"] > div:last-child { flex: 0 0 auto !important; }
- 
+
 /* Bara de chat deasupra navigării de jos */
 [data-testid="stBottom"] { bottom: 76px !important; z-index: 998; }
 [data-testid="stBottom"] > div { background: transparent !important; }
 [data-testid="stMain"] .block-container { padding-bottom: 170px !important; }
- 

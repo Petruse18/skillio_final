@@ -305,3 +305,22 @@ def pasi(lista):
 
 def lei(x):
     return timp.lei(x)
+
+
+def media_client(key):
+    """Video scurt și/sau mesaj vocal, trimise direct la Gemini. Întoarce [(bytes, mime), ...]."""
+    import streamlit as st
+    media = []
+    with st.expander("Arată sau spune problema (video, voce)", icon=":material/videocam:"):
+        vid = st.file_uploader("Video scurt, max 15 MB (ex. 10 secunde cu scurgerea sau zgomotul)",
+                               type=["mp4", "mov", "webm", "3gp"], key=f"{key}_vid")
+        voce = st.audio_input("Sau spune cu vocea ce s-a întâmplat", key=f"{key}_voce")
+        if vid is not None:
+            if vid.size > 15 * 1024 * 1024:
+                st.warning("Video-ul e prea mare. Filmează maximum 15-20 de secunde.")
+            else:
+                media.append((vid.getvalue(), vid.type or "video/mp4"))
+        if voce is not None:
+            media.append((voce.getvalue(), voce.type or "audio/wav"))
+        st.caption("Gemini se uită și ascultă direct înregistrarea.")
+    return media

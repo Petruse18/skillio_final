@@ -76,10 +76,14 @@ def ecran(u, lid):
     c.h(f'<div class="sk-between">{c.badge_status(l["status"])}<span class="sk-cap">#{l["id"]} · '
         f'{timp.de_cand(l["creat_la"])}</span></div>')
 
+    _banner_dispute(u, l)
     if e_client:
         _client(u, l)
     elif e_mester:
         _mester(u, l)
+        if l["status"] not in ("finalizata", "anulata", "confirmata"):
+            from views import materiale
+            materiale.card(l)
     else:
         _detalii(l, False)
 
@@ -279,10 +283,26 @@ def _client(u, l):
     if s != "deschisa":
         with st.expander("Detaliile solicitării"):
             _detalii(l, False)
-    if mester and s not in ("deschisa", "anulata"):
+    if mester and s not in ("deschisa", "anulata", "disputa") + logica.DISPUTABIL:
         with st.expander("Raportează o problemă cu meșterul"):
             from views.comun import _form_raport
             _form_raport(u, l["id"], mester["id"], config.MOTIVE_RAPORT_CLIENT, "rp_l")
+
+
+def _banner_dispute(u, l):
+    """Disputele și rapoartele lucrării, vizibile pentru ambele părți (și pentru mediator)."""
+    for r in logica.rapoarte_lucrare(l["id"]):
+        eu = r["autor_id"] == u["id"]
+        cine = "Ai deschis" if eu else f"{c.esc(r['autor'] or 'Cealaltă parte')} a deschis"
+        tip = "o dispută" if r["disputa"] else "un raport"
+        if r["status"] == "deschis":
+            c.h(f'<div class="sk-verdict danger"><div class="sk-between"><b>{cine} {tip}</b><span>La mediator</span>'
+                f'</div><div>Motiv: {c.esc(r["motiv"])}{" · " + c.esc(r["detalii"]) if r["detalii"] else ""}</div>'
+                f'<div class="sk-cap">Un mediator uman din echipa SKILLIO verifică pozele, chatul și cronologia și vă '
+                f'contactează pe amândoi.{" Banii rămân blocați până decide." if r["disputa"] else ""}</div></div>')
+        else:
+            c.h(f'<div class="sk-verdict ok"><div class="sk-between"><b>Mediatorul a decis</b><span>{c.esc(r["motiv"])}'
+                f'</span></div><div>{c.esc(r["rezolutie"] or "Cazul a fost închis.")}</div></div>')
 
 
 def _card_fereastra(l, bani):
@@ -320,7 +340,7 @@ def _card_reconfirmare(u, l):
 
 
 def _form_disputa(u, l, vizat, motive):
-    if l["status"] not in logica.IN_CURS:
+    if l["status"] not in logica.DISPUTABIL:
         return
     with st.expander("Ceva nu e în regulă? Deschide o dispută"):
         st.caption("Banii rămân blocați. Un mediator uman din echipa SKILLIO vede pozele, chatul și cronologia, "
@@ -549,7 +569,7 @@ def _mester(u, l):
     _form_disputa(u, l, client["id"], config.MOTIVE_RAPORT_MESTER)
     with st.expander("Detaliile lucrării"):
         _detalii(l, True)
-    if s not in ("anulata",):
+    if s not in ("anulata", "disputa") + logica.DISPUTABIL:
         with st.expander("Raportează clientul"):
             from views.comun import _form_raport
             _form_raport(u, l["id"], client["id"], config.MOTIVE_RAPORT_MESTER, "rp_mc")

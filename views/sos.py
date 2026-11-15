@@ -2,21 +2,21 @@
 Meșterul dă doar informații de urgență (ce închizi, ce nu atingi), nu reparația de la cap la coadă.
 Apelul se înregistrează (cu acordul ambilor), banii stau blocați 24 de ore, iar o dispută o decide un mediator."""
 from datetime import timedelta
- 
+
 import streamlit as st
- 
+
 from core import config, logica, timp
 from core.logica import Eroare
 from ui import comp as c
- 
+
 import os
 # Servere publice fără login (meet.jit.si cere acum un moderator logat). Se pot schimba din .env.
 VIDEO = os.getenv("SOS_VIDEO_URL", "https://meet.ffmuc.net/").strip()
 VIDEO_REZERVA = "https://vdo.ninja/?room="
 STARI = {"asteapta": "Căutăm un meșter", "in_apel": "În apel", "incheiat": "Apel încheiat",
          "disputa": "La mediator", "eliberat": "Plătit", "returnat": "Bani returnați"}
- 
- 
+
+
 def _act(fn, *a, ok=None):
     try:
         r = fn(*a)
@@ -26,8 +26,8 @@ def _act(fn, *a, ok=None):
         return r
     except Eroare as e:
         st.error(str(e))
- 
- 
+
+
 def card_acasa(u):
     """Cardul SOS de pe ecranul clientului (plus apelurile aflate în dispută)."""
     for s in [x for x in logica.sos_client(u["id"]) if x["status"] == "disputa"]:
@@ -40,8 +40,8 @@ def card_acasa(u):
             f'te ghidează prin video în câteva minute.</div></div></div>')
         if st.button("Cere ajutor acum", key="sos_start", type="primary", width="stretch", icon=":material/videocam:"):
             c.go("sos")
- 
- 
+
+
 def ecran(u, sid=None):
     c.bara_sus("SOS", "acasa")
     if sid:
@@ -75,23 +75,23 @@ def ecran(u, sid=None):
         sid = _act_val(logica.cere_sos, u["id"], mes, prob, acord)
         if sid:
             c.go("sos", sid)
- 
- 
+
+
 def _act_val(fn, *a):
     try:
         return fn(*a)
     except Eroare as e:
         st.error(str(e))
- 
- 
+
+
 def _card_disputa(s, u):
     cine = (s["rezolutie"] or "").replace("__deschisa_de:", "") or "O parte"
     c.h(f'<div class="sk-verdict danger"><div class="sk-between"><b>{c.esc(cine)} a deschis o dispută</b>'
         f'<span>La mediator</span></div><div>SOS: {c.esc(s["problema"])} · Motiv: {c.esc(s["motiv_disputa"] or "")}'
         f'</div><div class="sk-cap">Un mediator uman ascultă înregistrarea apelului și decide. '
         f'{c.lei(s["suma"])} rămân blocați până atunci.</div></div>')
- 
- 
+
+
 def _lista_mester(u):
     rows = logica.sos_deschise(u["id"])
     c.h('<div class="sk-title">Apeluri SOS</div><div class="sk-b" style="color:var(--sk-muted)">'
@@ -111,8 +111,8 @@ def _lista_mester(u):
                     _act(logica.accepta_sos, s["id"], u["id"])
             elif st.button("Deschide", width="stretch", key=f"sos_open{s['id']}"):
                 c.go("sos", s["id"])
- 
- 
+
+
 def _apel(u, s):
     e_client = u["id"] == s["client_id"]
     alt = logica.user(s["mester_id"]) if e_client and s["mester_id"] else logica.user(s["client_id"])
@@ -156,4 +156,3 @@ def _apel(u, s):
         else:
             c.alerta("Meșterul a primit plata." if s["status"] == "eliberat" else "Banii s-au întors la client.",
                      "ai", "check")
- 

@@ -1,5 +1,5 @@
 """Asistentul AI: din descriere (și poză) scoate meseria, urgența, prețul și ce să aducă meșterul.
- 
+
 Cu GEMINI_API_KEY în .env folosește Gemini. Fără cheie (sau dacă pică internetul)
 folosește o clasificare simplă după cuvinte-cheie, ca demo-ul să nu se blocheze.
 Rezultatul are mereu aceeași formă (vezi `_rezervă`).
@@ -7,11 +7,11 @@ Rezultatul are mereu aceeași formă (vezi `_rezervă`).
 import json
 import logging
 import re
- 
+
 from core import config
- 
+
 log = logging.getLogger("skillio.ai")
- 
+
 PROMPT = """Ești asistentul aplicației SKILLIO din Timișoara, care leagă clienți de meșteri.
 Clientul descrie o problemă din casă (și uneori trimite o poză). Răspunde DOAR cu JSON valid, în română:
 {{
@@ -28,14 +28,14 @@ Clientul descrie o problemă din casă (și uneori trimite o poză). Răspunde D
   "incredere": număr între 0 și 1
 }}
 Nu pune diagnostic definitiv: evaluarea finală o face meșterul.
- 
+
 Descrierea clientului: {text}"""
- 
- 
+
+
 def activ() -> bool:
     return bool(config.GEMINI_API_KEY)
- 
- 
+
+
 def _rezerva(text: str) -> dict:
     t = (text or "").lower()
     scoruri = {k: sum(1 for c in m["cuvinte"] if c in t) for k, m in config.MESERII.items()}
@@ -69,8 +69,8 @@ def _rezerva(text: str) -> dict:
         "incredere": 0.55 if scoruri[meserie] else 0.3,
         "sursa": "reguli",
     }
- 
- 
+
+
 def _curata(d: dict, text: str) -> dict:
     baza = _rezerva(text)
     if d.get("meserie") not in config.MESERII:
@@ -92,15 +92,16 @@ def _curata(d: dict, text: str) -> dict:
             d[k] = baza[k]
         d[k] = [str(x) for x in d[k]][:5]
     return d
- 
- 
-def diagnosticheaza(text: str, poza: bytes | None = None, mime: str = "image/jpeg") -> dict:
+
+
+def diagnosticheaza(text: str, poza: bytes | None = None, mime: str = "image/jpeg", media=None) -> dict:
     if activ():
         try:
             from google.genai import types
             parti = [PROMPT.format(meserii=list(config.MESERII), text=text or "(fără text, doar poză)")]
             if poza:
                 parti.append(types.Part.from_bytes(data=poza, mime_type=mime))
+            parti += _parti_media(media)
             d = _gemini_json(parti)
             d = _curata(d, text)
             d["sursa"] = "gemini"
@@ -108,8 +109,8 @@ def diagnosticheaza(text: str, poza: bytes | None = None, mime: str = "image/jpe
         except Exception as e:  # noqa: BLE001
             log.warning("Gemini a eșuat, folosesc regulile: %s", e)
     return _rezerva(text)
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Părerea AI despre prețul reconfirmat la fața locului (doar consultativ: decide clientul)
 # ---------------------------------------------------------------------------
@@ -120,12 +121,157 @@ Uită-te și la poză, dacă există. Răspunde DOAR cu JSON valid, în română
 {{"verdict": "rezonabil" | "de_discutat" | "ridicat",
   "interval_min": număr, "interval_max": număr,
   "explicatie": "1-2 propoziții simple pentru client: ce se vede în poză și dacă motivul justifică prețul"}}"""
- 
- 
+
+
 _MODELE = []  # modelul care a mers ultima dată e pus primul
- 
- 
-def _gemini_json(parti):
+
+
+NOTA_MEDIA = ("Clientul a trimis și {ce}. Privește și ascultă atent (apă care curge sau picură, zgomote de la "
+              "centrală sau mașină, scântei, fum) și spune în explicație, la început, ce ai observat în {ce}.")
+
+
+def _parti_media(media):
+    """Video și audio trimise direct la Gemini (multimodal). media = [(bytes, mime), ...]"""
+    from google.genai import types
+    parti, ce = [], []
+    for date, mime in media or []:
+        if date:
+            parti.append(types.Part.from_bytes(data=date, mime_type=mime))
+            ce.append("o înregistrare video" if mime.startswith("video") else "o înregistrare vocală")
+    if parti:
+        parti.append(NOTA_MEDIA.format(ce=" și ".join(dict.fromkeys(ce))))
+    return parti
+
+
+def cauta_pret_web(material: str) -> dict:
+    """Google Search grounding: prețul de azi al unui material la magazinele din Timișoara, cu surse."""
+    from google import genai
+    from google.genai import types
+    client = genai.Client(api_key=config.GEMINI_API_KEY, http_options=types.HttpOptions(api_version="v1beta"))
+    prompt = (f"Caută prețul actual (lei, cu TVA) pentru „{material}” la magazinele de bricolaj din România "
+              "(Dedeman, Hornbach, Leroy Merlin, Brico Depot). Răspunde DOAR cu JSON: "
+              '{"pret_min": număr, "pret_max": număr, "unitate": "mp|buc|l|kg", "nota": "o propoziție"}')
+    eroare = None
+    for m in list(_MODELE) or [config.GEMINI_MODEL]:
+        try:
+            r = client.models.generate_content(model=m, contents=prompt, config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())], temperature=0.1))
+        except Exception as e:  # noqa: BLE001
+            eroare = e
+            continue
+        d = _json_din_text(r.text)
+        surse = []
+        try:
+            for ch in r.candidates[0].grounding_metadata.grounding_chunks or []:
+                if ch.web and ch.web.uri:
+                    surse.append({"titlu": ch.web.title or ch.web.uri, "url": ch.web.uri})
+        except (AttributeError, IndexError, TypeError):
+            pass
+        d["surse"] = surse[:3]
+        return d
+    raise eroare or RuntimeError("căutarea nu a mers")
+
+
+MAGAZINE = ("Dedeman", "Hornbach", "Leroy Merlin")
+
+
+def lista_materiale(titlu: str, descriere: str, meserie: str, sugestii=None) -> dict:
+    """Lista de materiale pentru meșter, cu prețul de azi la fiecare magazin (Google Search grounding)."""
+    if activ():
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=config.GEMINI_API_KEY, http_options=types.HttpOptions(api_version="v1beta"))
+        prompt = (f"Ești un {meserie} din Timișoara. Lucrarea: {titlu}. Descrierea clientului: {descriere}. "
+                  f"Materiale sugerate: {', '.join(sugestii or [])}. Fă lista exactă de materiale și consumabile "
+                  f"necesare (maximum 7), cu cantități realiste. Caută pe Google prețul de azi (lei, cu TVA) la "
+                  f"{', '.join(MAGAZINE)} pentru fiecare. Dacă un magazin nu are produsul, pune null. "
+                  'Răspunde DOAR cu JSON: {"materiale": [{"produs": "nume concret", "cantitate": număr, '
+                  '"unitate": "buc|m|mp|kg|l", "preturi": {"Dedeman": preț unitar sau null, "Hornbach": ..., '
+                  '"Leroy Merlin": ...}}], "sfat": "o propoziție practică pentru meșter"}')
+        for m in list(_MODELE) or [config.GEMINI_MODEL, "gemini-3.5-flash", "gemini-flash-latest"]:
+            try:
+                r = client.models.generate_content(model=m, contents=prompt, config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())], temperature=0.1))
+                d = _json_din_text(r.text)
+            except Exception as e:  # noqa: BLE001
+                log.warning("Gemini (materiale) %s a eșuat: %s", m, e)
+                continue
+            surse = []
+            try:
+                for ch in r.candidates[0].grounding_metadata.grounding_chunks or []:
+                    if ch.web and ch.web.uri:
+                        surse.append({"titlu": ch.web.title or ch.web.uri, "url": ch.web.uri})
+            except (AttributeError, IndexError, TypeError):
+                pass
+            d["surse"], d["sursa"] = surse[:5], "gemini"
+            return _totaluri(d)
+    from services import unelte
+    mat, orient = [], 0
+    for x in sugestii or []:
+        r = unelte.pret_materiale(x, 1)
+        orient += r.get("total", 0)
+        mat.append({"produs": x, "cantitate": 1, "unitate": r.get("unitate", "buc"), "preturi": {}})
+    return _totaluri({"materiale": mat, "surse": [], "sursa": "reguli", "total_orientativ": orient,
+                      "sfat": "Fără conexiune la Gemini nu pot căuta prețurile din magazine."})
+
+
+def _totaluri(d: dict) -> dict:
+    tot = {}
+    for mg in MAGAZINE:
+        sume = []
+        for x in d.get("materiale", []):
+            p = (x.get("preturi") or {}).get(mg)
+            if isinstance(p, (int, float)):
+                sume.append(p * float(x.get("cantitate") or 1))
+        if sume:
+            tot[mg] = {"total": round(sum(sume)), "gasite": len(sume)}
+    n = len(d.get("materiale", []))
+    complete = {k: v for k, v in tot.items() if v["gasite"] == n} or tot
+    d["totaluri"] = tot
+    d["cel_mai_ieftin"] = min(complete, key=lambda k: complete[k]["total"]) if complete else None
+    return d
+
+
+LIMBI = {"ro": "Română", "en": "English", "uk": "Українська", "hu": "Magyar", "de": "Deutsch", "it": "Italiano"}
+
+
+def traduce(texte: list[str], limba: str) -> list[str]:
+    """Traduce mesajele din chat în limba aleasă de utilizator (un singur apel pentru toate)."""
+    if not texte or not activ():
+        return list(texte)
+    nume = LIMBI.get(limba, limba)
+    d = _gemini_json([f"Tradu fiecare mesaj în {nume}, natural, ca într-un chat între un client și un meșter. "
+                      "Păstrează numele și sumele. Dacă un mesaj e deja în limba aceasta, lasă-l neschimbat. "
+                      'Răspunde DOAR cu JSON: {"traduceri": ["..."]}, în aceeași ordine. Mesaje: '
+                      + json.dumps(texte, ensure_ascii=False)])
+    t = d.get("traduceri") if isinstance(d, dict) else None
+    return t if isinstance(t, list) and len(t) == len(texte) else list(texte)
+
+
+def timp_azi():
+    from core import timp
+    return timp.azi().isoformat()
+
+
+def _json_din_text(t: str):
+    t = (t or "").strip()
+    a, b = t.find("{"), t.rfind("}")
+    return json.loads(t[a:b + 1] if a >= 0 and b > a else t)
+
+
+def _cu_jurnal(f, jurnal):
+    """Învelește o unealtă ca să notăm ce a calculat Gemini (apare în aplicație la „Cum am calculat”)."""
+    import functools
+
+    @functools.wraps(f)
+    def w(*a, **k):
+        r = f(*a, **k)
+        jurnal.append({"unealta": f.__name__, "argumente": k or list(a), "rezultat": r})
+        return r
+    return w
+
+
+def _gemini_json(parti, unelte=None, jurnal=None):
     """Încearcă mai multe modele Gemini; dacă unul lipsește sau e supraîncărcat, trece la următorul."""
     from google import genai
     from google.genai import types
@@ -138,9 +284,15 @@ def _gemini_json(parti):
     eroare = None
     for m in list(_MODELE):
         try:
-            r = client.models.generate_content(
-                model=m, contents=parti,
-                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2))
+            if unelte:
+                if jurnal is not None:
+                    jurnal.clear()
+                cfg = types.GenerateContentConfig(
+                    temperature=0.2, tools=[_cu_jurnal(f, jurnal if jurnal is not None else []) for f in unelte],
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(maximum_remote_calls=12))
+            else:
+                cfg = types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2)
+            r = client.models.generate_content(model=m, contents=parti, config=cfg)
         except Exception as e:  # noqa: BLE001
             log.info("Gemini %s indisponibil, încerc alt model", m)
             if any(k in str(e) for k in ("404", "NOT_FOUND", "503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED",
@@ -151,11 +303,11 @@ def _gemini_json(parti):
         if _MODELE[0] != m:
             _MODELE.remove(m)
             _MODELE.insert(0, m)
-        d = json.loads(r.text)
+        d = _json_din_text(r.text)
         return d[0] if isinstance(d, list) else d
     raise eroare or RuntimeError("niciun model Gemini disponibil")
- 
- 
+
+
 def verifica_pret(l, vechi, nou, motiv, poza=None, mime="image/jpeg") -> dict:
     try:
         d = json.loads(l.get("diagnostic") or "{}")
@@ -181,37 +333,51 @@ def verifica_pret(l, vechi, nou, motiv, poza=None, mime="image/jpeg") -> dict:
             "explicatie": ("Prețul e în intervalul obișnuit pentru o lucrare de acest fel." if verdict == "rezonabil"
                            else "Prețul e peste ce se plătește de obicei. Cere meșterului detalii înainte să accepți."),
             "sursa": "reguli"}
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Agentul clientului: explică problema și împarte lucrările mari în etape
 # ---------------------------------------------------------------------------
 PROMPT_PLAN = """Ești agentul personal al unui client SKILLIO din Timișoara. Clientul descrie ce vrea să repare
 sau să renoveze. Explică-i pe înțeles și, dacă e nevoie de mai multe meserii, împarte lucrarea în etape în ordinea
 corectă (ex. baie: instalator, electrician, faianțar, zugrav). Meserii permise: {meserii}.
-Răspunde DOAR cu JSON valid, în română:
+La final, după ce ai calculat cu uneltele, răspunde DOAR cu JSON valid (fără ```), în română:
 {{"explicatie": "2-3 propoziții: ce se întâmplă și ce trebuie făcut",
   "pret_min": număr, "pret_max": număr, "zile": număr,
   "etape": [{{"titlu": "max 5 cuvinte", "meserie": una din meseriile permise, "descriere": "1 propoziție",
              "pret_min": număr, "pret_max": număr, "durata_min": număr, "materiale": ["..."]}}],
-  "sfat": "o propoziție: la ce să fie atent clientul"}}
-Prețuri Timișoara 2026, manoperă + materiale uzuale. O problemă mică are o singură etapă.
+  "sfat": "o propoziție: la ce să fie atent clientul",
+  "termen": "YYYY-MM-DD dacă clientul a spus până când vrea lucrarea, altfel null",
+  "buget": număr în lei dacă clientul a spus un buget, altfel null,
+  "taieri": ["dacă bugetul nu ajunge: ce poate schimba clientul și cât economisește, ex. „faianță economică: -900 lei”"]}}
+Azi este {azi}. Durata etapelor (durata_min) e în minute de lucru efectiv; o zi de lucru are 480 de minute.
+Calculează costurile DOAR cu uneltele, nu din memorie: pentru fiecare etapă apelează tarif_manopera
+(estimează cantitatea: mp, bucăți, circuite; o baie obișnuită are ~4 mp pardoseală și ~20 mp faianță) și
+pret_materiale (calitate "mediu" dacă clientul nu spune altfel), iar preturi_platforma pentru meseria etapei.
+Pentru cel mult 2 materiale principale (cele mai scumpe), verifică prețul de azi cu pret_live_material.
+Prețul etapei = manoperă + materiale. Pentru totalul final apelează taxe_skillio și pune în explicație cât plătește
+clientul cu taxa de protecție. O problemă mică are o singură etapă.
 Cererea clientului: {text}"""
- 
+
 _SABLON_BAIE = [("Instalații sanitare noi", "instalator", "Trasee noi de apă și scurgere, înainte de faianță.", 900, 1800, 480),
                 ("Circuite și prize baie", "electrician", "Circuit separat, prize protejate și corpuri de iluminat.", 500, 1100, 300),
                 ("Montaj gresie și faianță", "universal", "Hidroizolație, apoi gresie și faianță.", 2200, 4200, 1440),
                 ("Finisaje și zugrăveli", "zugrav", "Tavan și pereți, vopsea rezistentă la umezeală.", 400, 900, 300)]
- 
- 
-def planifica(text: str, poza: bytes | None = None, mime: str = "image/jpeg") -> dict:
+
+
+def planifica(text: str, poza: bytes | None = None, mime: str = "image/jpeg", media=None) -> dict:
     if activ():
         try:
             from google.genai import types
-            parti = [PROMPT_PLAN.format(meserii=list(config.MESERII), text=text or "(doar poză)")]
+            parti = [PROMPT_PLAN.format(meserii=list(config.MESERII), text=text or "(doar poză)",
+                                       azi=timp_azi())]
             if poza:
                 parti.append(types.Part.from_bytes(data=poza, mime_type=mime))
-            d = _gemini_json(parti)
+            parti += _parti_media(media)
+            from services import unelte
+            jurnal = []
+            d = _gemini_json(parti, unelte.UNELTE, jurnal)
+            d["calcule"] = [dict(j, nume=unelte.NUME.get(j["unealta"], j["unealta"])) for j in jurnal]
             etape = [e for e in d.get("etape", []) if isinstance(e, dict) and e.get("titlu")]
             for e in etape:
                 if e.get("meserie") not in config.MESERII:
@@ -237,4 +403,3 @@ def planifica(text: str, poza: bytes | None = None, mime: str = "image/jpeg") ->
                        "pret_min": d["pret_min"], "pret_max": d["pret_max"], "durata_min": d["durata_min"],
                        "materiale": d["materiale"]}],
             "sfat": d["sfat_siguranta"], "sursa": "reguli"}
- 

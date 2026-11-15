@@ -1,8 +1,8 @@
 """Regulile aplicației: conturi, solicitări, oferte, programări, plăți, recenzii, rapoarte.
- 
+
 Ecranele (views/) doar afișează și apelează funcțiile de aici. Dacă vreți să
 schimbați o regulă (ex. comisionul), o schimbați într-un singur loc.
- 
+
 Viața unei lucrări:
     deschisa    clientul a trimis solicitarea, meșterii trimit oferte
     acceptata   clientul a ales o ofertă, se stabilește ora
@@ -21,11 +21,11 @@ import json
 import re
 import secrets
 from datetime import datetime, timedelta
- 
+
 from services import geo, mesaje_externe, solana, stocare
- 
+
 from . import config, db, timp, trust
- 
+
 STATUS = {
     "deschisa": ("Așteaptă oferte", "neutru"),
     "acceptata": ("Stabiliți ora", "neutru"),
@@ -44,12 +44,12 @@ ACTIVE = ("deschisa", "acceptata", "de_plata", "programata", "sosit", "reconfirm
           "confirmata", "disputa")
 IN_CURS = ("sosit", "reconfirmare", "in_lucru", "gata", "confirmata")
 DISPUTABIL = ("programata",) + IN_CURS          # banii sunt blocați: se poate deschide o dispută
- 
- 
+
+
 class Eroare(Exception):
     """O acțiune care nu e permisă, cu un mesaj pentru utilizator."""
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Conturi și sesiuni
 # ---------------------------------------------------------------------------
@@ -60,16 +60,16 @@ def normalizeaza_telefon(t: str) -> str:
     if cifre.startswith("07") and len(cifre) == 10:
         cifre = "+4" + cifre
     return cifre
- 
- 
+
+
 def user(uid):
     return db.q1("SELECT * FROM utilizatori WHERE id = ?", (uid,)) if uid else None
- 
- 
+
+
 def user_dupa_telefon(tel):
     return db.q1("SELECT * FROM utilizatori WHERE telefon = ?", (tel,))
- 
- 
+
+
 def creeaza_cont(telefon, nume, rol, cartier, adresa="", meserii=(), email=None, auth_sub=None):
     telefon = normalizeaza_telefon(telefon)
     if len(telefon) < 10:
@@ -88,8 +88,8 @@ def creeaza_cont(telefon, nume, rol, cartier, adresa="", meserii=(), email=None,
         (telefon, nume.strip(), rol, timp.iso(timp.acum()), int(verificat), int(not schimbat),
          timp.iso(timp.acum()), adresa.strip(), cartier, lat, lon, ",".join(meserii), email, auth_sub))
     return uid
- 
- 
+
+
 def user_dupa_auth(sub, email=None):
     """Găsește contul legat de un login Auth0. Dacă emailul există deja, leagă contul de Auth0."""
     u = db.q1("SELECT * FROM utilizatori WHERE auth_sub = ?", (sub,)) if sub else None
@@ -101,8 +101,8 @@ def user_dupa_auth(sub, email=None):
         db.ex("UPDATE utilizatori SET rol = 'admin' WHERE id = ?", (u["id"],))
         u = user(u["id"])
     return u
- 
- 
+
+
 def intra(telefon):
     """Intrare demo cu numărul de telefon (în producție: Auth0, cod prin SMS sau email)."""
     telefon = normalizeaza_telefon(telefon)
@@ -110,8 +110,8 @@ def intra(telefon):
     if not u:
         raise Eroare("Nu găsim un cont cu acest număr. Creează unul în câteva secunde.")
     return u["id"], "demo", False
- 
- 
+
+
 def sesiune_noua(uid) -> str:
     """Sesiune pentru intrarea demo (telefon). Expiră după SESIUNE_ZILE zile (ora reală, nu ceasul demo)."""
     token = secrets.token_urlsafe(24)
@@ -119,8 +119,8 @@ def sesiune_noua(uid) -> str:
     db.ex("INSERT INTO sesiuni(token, user_id, creat_la, expira_la) VALUES(?,?,?,?)",
           (token, uid, timp.iso(acum), timp.iso(acum + timedelta(days=config.SESIUNE_ZILE))))
     return token
- 
- 
+
+
 def user_din_sesiune(token):
     if not token:
         return None
@@ -128,12 +128,12 @@ def user_din_sesiune(token):
     if not r or (r["expira_la"] and r["expira_la"] < timp.iso(datetime.now())):
         return None
     return user(r["user_id"])
- 
- 
+
+
 def sterge_sesiune(token):
     db.ex("DELETE FROM sesiuni WHERE token = ?", (token,))
- 
- 
+
+
 def actualizeaza_profil(uid, **campuri):
     permise = {"sol_wallet", "nume", "adresa", "cartier", "despre", "meserii", "experienta_ani", "tarif_ora", "raza_km",
                "disponibil", "poza", "ghid_vazut", "act_status", "act_poza", "departe_demo", "lat", "lon"}
@@ -144,17 +144,17 @@ def actualizeaza_profil(uid, **campuri):
         return
     sets = ", ".join(f"{k} = ?" for k in campuri)
     db.ex(f"UPDATE utilizatori SET {sets} WHERE id = ?", (*campuri.values(), uid))
- 
- 
+
+
 def adauga_portofoliu(mester_id, poza, descriere):
     db.ex("INSERT INTO portofoliu(mester_id, poza, descriere, creat_la) VALUES(?,?,?,?)",
           (mester_id, poza, descriere, timp.iso(timp.acum())))
- 
- 
+
+
 def portofoliu(mester_id):
     return db.q("SELECT * FROM portofoliu WHERE mester_id = ? ORDER BY id DESC", (mester_id,))
- 
- 
+
+
 def salveaza_poza(fisier, prefix="img") -> str | None:
     """Salvează o poză încărcată (în cloud sau local, vezi services/stocare.py) și întoarce referința."""
     if fisier is None:
@@ -162,15 +162,15 @@ def salveaza_poza(fisier, prefix="img") -> str | None:
     ext = (fisier.name.rsplit(".", 1)[-1] if "." in fisier.name else "jpg").lower()[:5]
     nume = f"{prefix}_{secrets.token_hex(6)}.{ext}"
     return stocare.salveaza(fisier.getvalue(), nume)
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Meșteri: căutare și potrivire
 # ---------------------------------------------------------------------------
 def meserii_lista(u):
     return [m for m in (u.get("meserii") or "").split(",") if m]
- 
- 
+
+
 def mesteri(meserie=None, lat=None, lon=None, max_km=None, doar_disponibili=False, scor_minim=0,
             pret_max=None, exp_min=0, rating_min=0, text="", sortare="potrivire"):
     rows = db.q("SELECT * FROM utilizatori WHERE rol = 'mester'")
@@ -211,22 +211,22 @@ def mesteri(meserie=None, lat=None, lon=None, max_km=None, doar_disponibili=Fals
     }
     rez.sort(key=chei.get(sortare, chei["potrivire"]))
     return rez
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Solicitări (lucrări)
 # ---------------------------------------------------------------------------
 def lucrare(lid):
     return db.q1("SELECT * FROM lucrari WHERE id = ?", (lid,))
- 
- 
+
+
 def diagnostic(l):
     try:
         return json.loads(l.get("diagnostic") or "{}")
     except (TypeError, ValueError):
         return {}
- 
- 
+
+
 def creeaza_lucrare(client_id, titlu, descriere, adresa, cartier, meserie, urgent, buget, poza, diag,
                     mester_tinta=None):
     if not descriere.strip():
@@ -257,18 +257,18 @@ def creeaza_lucrare(client_id, titlu, descriere, adresa, cartier, meserie, urgen
     mesaj_sistem(lid, "Solicitarea a fost trimisă la " + (f"{len(invitati)} meșteri potriviți." if invitati
                                                           else "meșterii din zonă."))
     return lid, len(invitati)
- 
- 
+
+
 def lucrari_client(client_id):
     return db.q("SELECT * FROM lucrari WHERE client_id = ? ORDER BY "
                 "CASE WHEN status IN ('finalizata','anulata') THEN 1 ELSE 0 END, id DESC", (client_id,))
- 
- 
+
+
 def lucrari_mester(mester_id):
     return db.q("SELECT * FROM lucrari WHERE mester_id = ? ORDER BY "
                 "CASE WHEN status IN ('finalizata','anulata') THEN 1 ELSE 0 END, programat_la", (mester_id,))
- 
- 
+
+
 def solicitari_pentru_mester(mester_id):
     """Solicitări deschise care se potrivesc meșterului. Urgentele sunt primele."""
     m = user(mester_id)
@@ -290,13 +290,13 @@ def solicitari_pentru_mester(mester_id):
         rez.append(dict(l, dist=d, oferta_mea=of, nr_oferte=nr_oferte, invitat=invitat))
     rez.sort(key=lambda l: (not l["urgent"], l["oferta_mea"] is not None, l["dist"]))
     return rez
- 
- 
+
+
 def refuza_solicitare(lid, mester_id):
     db.ex("INSERT INTO invitatii(lucrare_id, mester_id, loc, status) VALUES(?,?,99,'refuzata') "
           "ON CONFLICT(lucrare_id, mester_id) DO UPDATE SET status = 'refuzata'", (lid, mester_id))
- 
- 
+
+
 def anuleaza_lucrare(lid, de_cine, motiv="Anulată de client"):
     l = lucrare(lid)
     if l["status"] in ("finalizata", "anulata", "disputa") + IN_CURS:
@@ -313,19 +313,19 @@ def anuleaza_lucrare(lid, de_cine, motiv="Anulată de client"):
     tinta = l["mester_id"] if de_cine == l["client_id"] else l["client_id"]
     if tinta:
         notifica(tinta, f"Lucrarea „{l['titlu']}” a fost anulată.", lid)
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Oferte și programare
 # ---------------------------------------------------------------------------
 def taxa_protectie(suma):
     return round(suma * config.TAXA_PROTECTIE, 2)
- 
- 
+
+
 def total_cu_urgenta(pret, urgent):
     return round(pret * (1 + config.SPOR_URGENT)) if urgent else round(pret)
- 
- 
+
+
 def trimite_oferta(lid, mester_id, pret, propus_la: datetime, mesaj=""):
     l = lucrare(lid)
     if l["status"] != "deschisa":
@@ -345,8 +345,8 @@ def trimite_oferta(lid, mester_id, pret, propus_la: datetime, mesaj=""):
     m = user(mester_id)
     notifica(l["client_id"], f"Ofertă nouă de la {m['nume']}: {timp.lei(total_cu_urgenta(pret, l['urgent']))}", lid, extern=True)
     return oid
- 
- 
+
+
 def oferte(lid):
     rows = db.q("SELECT * FROM oferte WHERE lucrare_id = ? AND status IN ('trimisa','acceptata') ORDER BY total", (lid,))
     l = lucrare(lid)
@@ -355,8 +355,8 @@ def oferte(lid):
         o["trust"] = trust.calculeaza(o["mester_id"])
         o["dist"] = geo.distanta_km(l["lat"], l["lon"], o["mester"]["lat"], o["mester"]["lon"])
     return rows
- 
- 
+
+
 def accepta_oferta(oid, client_id):
     o = db.q1("SELECT * FROM oferte WHERE id = ?", (oid,))
     l = lucrare(o["lucrare_id"])
@@ -372,8 +372,8 @@ def accepta_oferta(oid, client_id):
     mesaj_sistem(l["id"], f"{user(client_id)['nume']} a acceptat oferta de {timp.lei(o['total'])}. "
                           f"Mai rămâne de confirmat ora.")
     notifica(o["mester_id"], f"Oferta ta pentru „{l['titlu']}” a fost acceptată!", l["id"], extern=True)
- 
- 
+
+
 def propune_ora(lid, uid, cand: datetime):
     l = lucrare(lid)
     if l["status"] not in ("acceptata",):
@@ -384,8 +384,8 @@ def propune_ora(lid, uid, cand: datetime):
     db.ex("UPDATE lucrari SET prog_propus = ?, prog_propus_de = ? WHERE id = ?", (timp.iso(cand), rol, lid))
     mesaj_sistem(lid, f"{user(uid)['nume']} propune {timp.data_ora(cand)}.")
     notifica(l["mester_id"] if rol == "client" else l["client_id"], f"Oră nouă propusă: {timp.data_ora(cand)}", lid, extern=True)
- 
- 
+
+
 def confirma_ora(lid, uid):
     l = lucrare(lid)
     rol = "client" if uid == l["client_id"] else "mester"
@@ -397,8 +397,8 @@ def confirma_ora(lid, uid):
     mesaj_sistem(lid, f"Ora e stabilită: {timp.data_ora(l['prog_propus'])}. Clientul poate plăti.")
     notifica(l["client_id"] if rol == "mester" else l["mester_id"],
              f"Programare confirmată: {timp.data_ora(l['prog_propus'])}", lid, extern=True)
- 
- 
+
+
 def plateste(lid, client_id):
     """Plată simulată: suma ofertei rămâne blocată în platformă până la confirmarea clientului."""
     l = lucrare(lid)
@@ -418,20 +418,20 @@ def plateste(lid, client_id):
                       f"(include taxa de protecție de {config.PCT_PROTECTIE}).")
     notifica(l["mester_id"], f"Clientul a plătit {timp.lei(o['total'])} (blocați până la final). "
                              f"Te așteaptă {timp.data_ora(l['programat_la'])}.", lid, extern=True)
- 
- 
+
+
 # --- plata pe blockchain (Solana devnet), opțională --------------------------------
 def _blocheaza_onchain(pid, lid, suma):
     if not solana.activ():
         return
- 
+
     def salveaza(rez):
         sig, lam = rez
         db.ex("UPDATE plati SET tx_lock = ?, lamports = ? WHERE id = ?", (sig, lam, pid))
         mesaj_sistem(lid, f"Plata de {timp.lei(suma)} e blocată și pe blockchain (Solana devnet).")
     solana.in_fundal("lock", lambda: solana.blocheaza(lid, suma), salveaza)
- 
- 
+
+
 def _elibereaza_onchain(lid, plati):
     l = lucrare(lid)
     amprenta = solana.amprenta_lucrare(l, plati)
@@ -441,7 +441,7 @@ def _elibereaza_onchain(lid, plati):
         return
     m = user(l["mester_id"])
     catre = solana.portofel_mester(m["id"], m.get("sol_wallet"))
- 
+
     def salveaza(sig):
         for p in plati:
             if p.get("tx_lock"):
@@ -449,19 +449,19 @@ def _elibereaza_onchain(lid, plati):
         db.ex("UPDATE lucrari SET tx_pasaport = ? WHERE id = ?", (sig, lid))
         mesaj_sistem(lid, "Banii au fost eliberați on-chain, iar pașaportul lucrării a fost scris pe Solana.")
     solana.in_fundal("release", lambda: solana.elibereaza(lid, lam, catre, amprenta), salveaza)
- 
- 
+
+
 def _returneaza_onchain(lid, plati):
     cu_tx = [p for p in plati if p.get("tx_lock") and p.get("lamports")]
     if not solana.activ() or not cu_tx:
         return
- 
+
     def salveaza(sig):
         for p in cu_tx:
             db.ex("UPDATE plati SET tx_final = ? WHERE id = ?", (sig, p["id"]))
     solana.in_fundal("refund", lambda: solana.returneaza(lid, sum(p["lamports"] for p in cu_tx)), salveaza)
- 
- 
+
+
 def bani_lucrare(lid):
     rows = db.q("SELECT * FROM plati WHERE lucrare_id = ?", (lid,))
     return {
@@ -471,8 +471,8 @@ def bani_lucrare(lid):
         "comision": sum(p["comision"] for p in rows if p["status"] == "eliberat"),
         "rows": rows,
     }
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Ziua lucrării
 # ---------------------------------------------------------------------------
@@ -490,14 +490,14 @@ def am_ajuns(lid, mester_id):
                  " Urmează reconfirmarea prețului, cu poză.")
     notifica(l["client_id"], f"{m['nume']} a ajuns. Îți trimite acum prețul reconfirmat.", lid)
     return "aplicatie", punctual
- 
- 
+
+
 def pret_curent(lid):
     """Cât plătește clientul pentru lucrare (ofertă + extra acceptate), fără taxa de protecție."""
     return sum(p["suma"] for p in db.q("SELECT suma FROM plati WHERE lucrare_id = ? AND status = 'blocat' "
                                        "AND tip IN ('oferta','extra')", (lid,)))
- 
- 
+
+
 def reconfirma_pret(lid, mester_id, pret, motiv, poza=None, poza_bytes=None, mime="image/jpeg"):
     """La fața locului, meșterul reconfirmă prețul cu o poză și un motiv. AI-ul doar dă o părere."""
     l = lucrare(lid)
@@ -517,15 +517,15 @@ def reconfirma_pret(lid, mester_id, pret, motiv, poza=None, poza_bytes=None, mim
                  (f" ({'+' if dif > 0 else '−'}{timp.lei(abs(dif))} față de ofertă)" if dif else " (la fel ca oferta)") +
                  f". Motiv: {motiv.strip()}")
     notifica(l["client_id"], f"Meșterul a reconfirmat prețul: {timp.lei(pret)}. Acceptă sau refuză.", lid)
- 
- 
+
+
 def reconfirmare(l):
     try:
         return json.loads(l.get("reconf") or "{}")
     except (TypeError, ValueError):
         return {}
- 
- 
+
+
 def raspunde_reconfirmare(lid, client_id, accept: bool):
     l = lucrare(lid)
     if l["client_id"] != client_id or l["status"] != "reconfirmare":
@@ -567,8 +567,8 @@ def raspunde_reconfirmare(lid, client_id, accept: bool):
           "WHERE id = ?", (lid,))
     mesaj_sistem(lid, f"Clientul a refuzat prețul. A plătit doar deplasarea ({timp.lei(taxa)}), restul s-a întors.")
     notifica(l["mester_id"], f"Clientul a refuzat prețul. Primești taxa de deplasare: {timp.lei(taxa)}.", lid)
- 
- 
+
+
 def cere_extra(lid, mester_id, suma, motiv):
     l = lucrare(lid)
     if l["mester_id"] != mester_id or l["status"] != "in_lucru":
@@ -579,8 +579,8 @@ def cere_extra(lid, mester_id, suma, motiv):
           (lid, suma, motiv.strip(), "trimisa", timp.iso(timp.acum())))
     mesaj_sistem(lid, f"Ofertă pentru lucrare în plus: {timp.lei(suma)} – {motiv.strip()}")
     notifica(l["client_id"], f"Ofertă pentru lucrare în plus: {timp.lei(suma)}", lid)
- 
- 
+
+
 def raspunde_extra(eid, client_id, accept: bool):
     e = db.q1("SELECT * FROM extra WHERE id = ?", (eid,))
     l = lucrare(e["lucrare_id"])
@@ -599,12 +599,12 @@ def raspunde_extra(eid, client_id, accept: bool):
     else:
         mesaj_sistem(l["id"], "Clientul a refuzat lucrarea în plus.")
     notifica(l["mester_id"], "Clientul a " + ("acceptat" if accept else "refuzat") + " lucrarea în plus.", l["id"])
- 
- 
+
+
 def extra_lucrare(lid):
     return db.q("SELECT * FROM extra WHERE lucrare_id = ? ORDER BY id", (lid,))
- 
- 
+
+
 def lucrare_gata(lid, mester_id, nota="", poza=None):
     l = lucrare(lid)
     if l["mester_id"] != mester_id or l["status"] != "in_lucru":
@@ -613,8 +613,8 @@ def lucrare_gata(lid, mester_id, nota="", poza=None):
           (timp.iso(timp.acum()), nota.strip(), poza, lid))
     mesaj_sistem(lid, "Meșterul a marcat lucrarea ca gata." + (f" Notă: {nota.strip()}" if nota.strip() else ""))
     notifica(l["client_id"], "Lucrarea e gata. Verifică și confirmă.", lid, extern=True)
- 
- 
+
+
 def confirma_lucrare(lid, client_id):
     """Clientul confirmă. Banii mai stau blocați 24 de ore: în acest timp oricare parte poate deschide o dispută."""
     l = lucrare(lid)
@@ -627,8 +627,8 @@ def confirma_lucrare(lid, client_id):
     mesaj_sistem(lid, f"Ambele părți au confirmat. Banii pleacă la meșter pe {timp.data_ora(pana)}, dacă nimeni "
                       f"nu deschide o dispută până atunci.")
     notifica(l["mester_id"], f"Clientul a confirmat. Primești banii pe {timp.data_ora(pana)}.", lid, extern=True)
- 
- 
+
+
 def elibereaza_plata(lid):
     """Banii blocați ajung la meșter (minus comisionul); taxa de protecție rămâne la SKILLIO."""
     l = lucrare(lid)
@@ -646,8 +646,8 @@ def elibereaza_plata(lid):
     _elibereaza_onchain(lid, [p for p in blocate if p["tip"] != "protectie"])
     mesaj_sistem(lid, f"{timp.lei(net)} au ajuns la meșter (comision SKILLIO {config.PCT_COMISION}).")
     notifica(l["mester_id"], f"Ai încasat {timp.lei(net)} pentru „{l['titlu']}”.", lid, extern=True)
- 
- 
+
+
 def elibereaza_scadente():
     """Rulează la fiecare încărcare: plătește lucrările și apelurile SOS al căror termen de dispută a trecut."""
     prag = timp.iso(timp.acum() - timedelta(hours=config.FEREASTRA_DISPUTA_ORE))
@@ -655,8 +655,8 @@ def elibereaza_scadente():
         elibereaza_plata(l["id"])
     for s_ in db.q("SELECT id FROM sos WHERE status = 'incheiat' AND incheiat_la <= ?", (prag,)):
         _plateste_sos(s_["id"])
- 
- 
+
+
 def nu_a_venit(lid, client_id):
     """Dacă meșterul nu a ajuns în ziua programată, clientul primește banii înapoi."""
     l = lucrare(lid)
@@ -1023,13 +1023,13 @@ def ocupate(mester_id, ignora_lucrare=None):
     for b in db.q("SELECT zi, ora FROM blocari WHERE mester_id = ?", (mester_id,)):
         rez.add((b["zi"], b["ora"]))
     return rez
- 
- 
+
+
 def slot_liber(mester_id, cand: datetime, ignora_lucrare=None) -> bool:
     ocup = ocupate(mester_id, ignora_lucrare)
     return (cand.date().isoformat(), cand.hour) not in ocup and (cand.date().isoformat(), -1) not in ocup
- 
- 
+
+
 def sloturi_libere(mester_id, zile=config.ZILE_CALENDAR, ignora_lucrare=None):
     acum = timp.acum()
     ocup = ocupate(mester_id, ignora_lucrare)
@@ -1045,15 +1045,15 @@ def sloturi_libere(mester_id, zile=config.ZILE_CALENDAR, ignora_lucrare=None):
             if (zi.isoformat(), h) not in ocup:
                 rez.append(cand)
     return rez
- 
- 
+
+
 def comuta_blocare(mester_id, zi: str, ora: int):
     if db.q1("SELECT 1 FROM blocari WHERE mester_id = ? AND zi = ? AND ora = ?", (mester_id, zi, ora)):
         db.ex("DELETE FROM blocari WHERE mester_id = ? AND zi = ? AND ora = ?", (mester_id, zi, ora))
     else:
         db.ex("INSERT INTO blocari(mester_id, zi, ora) VALUES(?,?,?)", (mester_id, zi, ora))
- 
- 
+
+
 def calendar_mester(mester_id, zile=config.ZILE_CALENDAR):
     acum = timp.acum()
     lucr = db.q("SELECT * FROM lucrari WHERE mester_id = ? AND status IN "
@@ -1070,8 +1070,8 @@ def calendar_mester(mester_id, zile=config.ZILE_CALENDAR):
                             (zi.isoformat(), -1) in blocate})
         zile_l.append({"zi": zi, "sloturi": sloturi})
     return zile_l
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Notificări
 # ---------------------------------------------------------------------------
@@ -1081,20 +1081,20 @@ def notifica(uid, text, lid=None, extern=False):
           (uid, text, lid, timp.iso(timp.acum())))
     if extern:
         mesaje_externe.anunta(user(uid), text)
- 
- 
+
+
 def notificari(uid, limita=40):
     return db.q("SELECT * FROM notificari WHERE user_id = ? ORDER BY id DESC LIMIT ?", (uid, limita))
- 
- 
+
+
 def notificari_necitite(uid):
     return db.val("SELECT COUNT(*) FROM notificari WHERE user_id = ? AND citit = 0", (uid,), 0)
- 
- 
+
+
 def marcheaza_notificari(uid):
     db.ex("UPDATE notificari SET citit = 1 WHERE user_id = ? AND citit = 0", (uid,))
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # Statistici
 # ---------------------------------------------------------------------------
@@ -1111,8 +1111,8 @@ def statistici_mester(mid):
         "oferte_acceptate": db.val("SELECT COUNT(*) FROM oferte WHERE mester_id = ? AND status = 'acceptata'",
                                    (mid,), 0),
     }
- 
- 
+
+
 def statistici_platforma():
     p = db.q("SELECT * FROM plati")
     return {
@@ -1125,4 +1125,95 @@ def statistici_platforma():
         "comision": sum(x["comision"] for x in p if x["status"] == "eliberat"),
         "rapoarte_deschise": db.val("SELECT COUNT(*) FROM rapoarte WHERE status = 'deschis'", implicit=0),
     }
- 
+
+
+# ---------------------------------------------------------------------------
+# „O propoziție, o echipă întreagă”: agentul alege meșterii și îi programează în ordinea corectă
+# ---------------------------------------------------------------------------
+_LUNI = {"ian": 1, "feb": 2, "mar": 3, "apr": 4, "mai": 5, "iun": 6, "iul": 7, "aug": 8, "sep": 9, "oct": 10,
+         "noi": 11, "nov": 11, "dec": 12}
+
+
+def citeste_termen_buget(text):
+    """Rezervă când Gemini nu e disponibil: „până pe 20 decembrie, buget 9.000 lei”."""
+    t = (text or "").lower()
+    buget = None
+    m = re.search(r"buget\D{0,12}(\d[\d.\s]*\d|\d)", t) or re.search(r"(\d[\d.\s]{2,}\d)\s*(?:de\s*)?lei", t)
+    if m:
+        try:
+            buget = float(re.sub(r"[.\s]", "", m.group(1)))
+        except ValueError:
+            pass
+    termen = None
+    m = re.search(r"(\d{1,2})\s+([a-zăâîșț]{3})[a-zăâîșț]*", t)
+    if m and m.group(2) in _LUNI:
+        azi = timp.azi()
+        an = azi.year + (1 if _LUNI[m.group(2)] < azi.month else 0)
+        try:
+            termen = datetime(an, _LUNI[m.group(2)], int(m.group(1))).date()
+        except ValueError:
+            pass
+    return termen, buget
+
+
+def _zile_lucru(start, n):
+    """Ziua de final după n zile lucrătoare (fără duminică)."""
+    d, ramase = start, max(int(n), 1) - 1
+    while ramase:
+        d += timedelta(days=1)
+        if d.weekday() != 6:
+            ramase -= 1
+    return d
+
+
+def echipa_instant(u, plan, termen=None, buget=None):
+    """Pentru fiecare etapă: meșterul cu cea mai bună combinație disponibilitate + Trust Score, programat după
+    terminarea etapei anterioare (instalațiile înaintea faianței etc.)."""
+    lat, lon = u.get("lat"), u.get("lon")
+    cursor = (timp.acum() + timedelta(days=1)).date()
+    folositi, echipa = set(), []
+    for e in plan.get("etape", []):
+        zile = max(1, round((e.get("durata_min") or 480) / 480))
+        cand = []
+        for m in mesteri(meserie=e["meserie"], lat=lat, lon=lon)[:8]:
+            libere = [s for s in sloturi_libere(m["id"], zile=60) if s.date() >= cursor and s.date().weekday() != 6]
+            if not libere:
+                continue
+            start = libere[0]
+            scor = (start.date() - cursor).days * 6 - m["trust"]["scor"] + (15 if m["id"] in folositi else 0)
+            cand.append((scor, start, m))
+        if not cand:
+            echipa.append({"etapa": e, "mester": None, "start": None, "final": None, "zile": zile})
+            continue
+        cand.sort(key=lambda x: x[0])
+        _, start, m = cand[0]
+        final = _zile_lucru(start.date(), zile)
+        folositi.add(m["id"])
+        echipa.append({"etapa": e, "zile": zile, "start": start, "final": final, "alternative": len(cand) - 1,
+                       "mester": {"id": m["id"], "nume": m["nume"], "scor": m["trust"]["scor"],
+                                  "medie": m["trust"]["medie"], "dist": m["dist"]}})
+        cursor = final + timedelta(days=1)
+    pmin = sum(x["etapa"].get("pret_min") or 0 for x in echipa)
+    pmax = sum(x["etapa"].get("pret_max") or 0 for x in echipa)
+    gata = max((x["final"] for x in echipa if x["final"]), default=None)
+    return {"etape": echipa, "pret_min": pmin, "pret_max": pmax, "gata_la": gata,
+            "termen": termen, "buget": buget,
+            "in_termen": None if not (termen and gata) else gata <= termen,
+            "in_buget": None if not buget else pmax <= buget,
+            "peste_buget": max(0, round(pmin - buget)) if buget else 0}
+
+
+def rezerva_echipa(u, plan, echipa):
+    """Câte o cerere pe etapă, trimisă întâi meșterului ales, cu ziua propusă de agent. Meșterul confirmă cu o ofertă."""
+    ids = []
+    for x in echipa["etape"]:
+        e = x["etapa"]
+        diag = {"pret_min": e.get("pret_min"), "pret_max": e.get("pret_max"), "durata_min": e.get("durata_min", 120),
+                "materiale": e.get("materiale", []), "descriere": e.get("descriere", ""), "sursa": plan.get("sursa")}
+        desc = e.get("descriere") or e["titlu"]
+        if x["start"]:
+            desc += f" Agentul SKILLIO propune începerea {timp.data_ora(x['start'])}, {x['zile']} zile."
+        lid, _ = creeaza_lucrare(u["id"], e["titlu"], desc, u["adresa"] or u["cartier"], u["cartier"], e["meserie"],
+                                 False, None, None, diag, mester_tinta=x["mester"]["id"] if x["mester"] else None)
+        ids.append(lid)
+    return ids
