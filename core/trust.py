@@ -91,10 +91,10 @@ def calculeaza(mester_id: int) -> dict:
     if sosiri:
         la_timp = sum(1 for p in sosiri if p["punctual"])
         procent = la_timp / len(sosiri)
-        factori.append(_f("punctualitate", "Punctualitate (sosire confirmată de rețea)", 10, procent,
+        factori.append(_f("punctualitate", "Punctualitate (sosire la ora stabilită)", 10, procent,
                           f"{la_timp} din {len(sosiri)} sosiri la timp"))
     else:
-        factori.append(_f("punctualitate", "Punctualitate (sosire confirmată de rețea)", 10, None, "fără sosiri încă"))
+        factori.append(_f("punctualitate", "Punctualitate (sosire la ora stabilită)", 10, None, "fără sosiri încă"))
 
     # 5. Lucrări finalizate: plafon la 30
     factori.append(_f("lucrari", "Lucrări finalizate", 10, min(finalizate / 30, 1), f"{finalizate} lucrări confirmate"))
@@ -104,7 +104,7 @@ def calculeaza(mester_id: int) -> dict:
     detalii = []
     detalii.append("număr verificat" if m.get("numar_verificat") else "număr neverificat")
     detalii.append("SIM stabil" if m.get("sim_ok") else "SIM schimbat recent")
-    factori.append(_f("verificare", "Identitate verificată (Nokia)", 10, ver, ", ".join(detalii)))
+    factori.append(_f("verificare", "Identitate verificată", 10, ver, ", ".join(detalii)))
 
     # 7. Reclamații confirmate: -5 puncte fiecare
     factori.append(_f("reclamatii", "Fără reclamații confirmate", 10, max(0, 1 - reclamatii * 0.5),
